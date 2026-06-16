@@ -7,535 +7,366 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
-import json, os, time
-from datetime import datetime, timedelta
+import json, os, time, random
+from datetime import datetime
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-# ─────────────────────────────────────────────
-#  CONFIG
-# ─────────────────────────────────────────────
 st.set_page_config(
-    page_title="GridShield — Power Grid SOC",
-    page_icon="🛡",
+    page_title="NEXUS — Grid Defence",
+    page_icon="🔮",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# ─────────────────────────────────────────────
-#  DESIGN TOKENS
-#  Palette: near-black base, electric-blue
-#  primary, acid-green for safe states,
-#  crimson for threats, amber for warnings.
-#  Monospace data face, clean sans UI face.
-# ─────────────────────────────────────────────
 CSS = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Share+Tech+Mono&family=Inter:wght@300;400;500&display=swap');
 
-/* ── Reset & Base ── */
-*, *::before, *::after { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; }
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{background:#05010f;}
 
-.stApp {
-    background: #070c14;
-    font-family: 'DM Sans', system-ui, sans-serif;
-    color: #c8d8e8;
+.stApp{
+    background: #05010f;
+    font-family:'Inter',sans-serif;
+    color:#e0d0ff;
 }
-.main .block-container {
-    padding: 0 2rem 3rem;
-    max-width: 1440px;
-}
+.main .block-container{padding:0 1.8rem 3rem;max-width:1440px;}
 
-/* ── Hide Streamlit chrome ── */
-#MainMenu, footer, header,
-.stDeployButton,
-[data-testid="stToolbar"] { display: none !important; }
+/* Hide chrome */
+#MainMenu,footer,header,.stDeployButton,[data-testid="stToolbar"]{display:none!important;}
+
+/* ── Scanline overlay ── */
+.stApp::before{
+    content:'';
+    position:fixed;top:0;left:0;right:0;bottom:0;
+    background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(180,0,255,0.015) 2px,
+        rgba(180,0,255,0.015) 4px
+    );
+    pointer-events:none;
+    z-index:0;
+}
 
 /* ── Sidebar ── */
-section[data-testid="stSidebar"] {
-    background: #04080f !important;
-    border-right: 1px solid #0e1e35 !important;
-    width: 220px !important;
+section[data-testid="stSidebar"]{
+    background: linear-gradient(180deg,#0a0118 0%,#080114 100%) !important;
+    border-right: 1px solid rgba(180,0,255,0.25) !important;
+    box-shadow: 4px 0 30px rgba(180,0,255,0.08) !important;
 }
-section[data-testid="stSidebar"] > div { padding: 0 !important; }
+section[data-testid="stSidebar"]>div{padding:0!important;}
 
-/* ── Radio as nav ── */
-div[data-testid="stSidebar"] .stRadio > label {
-    display: none;
+/* Radio nav */
+div[data-testid="stSidebar"] .stRadio>label{display:none;}
+div[data-testid="stSidebar"] .stRadio div[role="radiogroup"]{gap:2px;display:flex;flex-direction:column;}
+div[data-testid="stSidebar"] .stRadio label[data-baseweb="radio"]{
+    padding:11px 22px!important;
+    border-radius:0!important;
+    border-left:2px solid transparent!important;
+    font-family:'Share Tech Mono',monospace!important;
+    font-size:10px!important;
+    letter-spacing:0.12em!important;
+    text-transform:uppercase!important;
+    color:#4a2a7a!important;
+    transition:all 0.2s!important;
+    cursor:pointer!important;
 }
-div[data-testid="stSidebar"] .stRadio div[role="radiogroup"] {
-    gap: 2px;
-    display: flex;
-    flex-direction: column;
+div[data-testid="stSidebar"] .stRadio label[data-baseweb="radio"]:hover{
+    background:rgba(180,0,255,0.07)!important;
+    color:#cc66ff!important;
 }
-div[data-testid="stSidebar"] .stRadio label[data-baseweb="radio"] {
-    padding: 10px 20px !important;
-    border-radius: 0 !important;
-    border-left: 2px solid transparent !important;
-    font-size: 11px !important;
-    font-weight: 500 !important;
-    letter-spacing: 0.07em !important;
-    text-transform: uppercase !important;
-    color: #4a6a8f !important;
-    transition: all 0.15s !important;
-    cursor: pointer !important;
-}
-div[data-testid="stSidebar"] .stRadio label[data-baseweb="radio"]:hover {
-    background: rgba(30,160,255,0.06) !important;
-    color: #c8d8e8 !important;
-}
-div[data-testid="stSidebar"] .stRadio input:checked + div {
-    background: transparent !important;
-}
-div[data-testid="stSidebar"] .stRadio label[data-baseweb="radio"]:has(input:checked) {
-    border-left-color: #1ea0ff !important;
-    color: #1ea0ff !important;
-    background: rgba(30,160,255,0.08) !important;
+div[data-testid="stSidebar"] .stRadio label[data-baseweb="radio"]:has(input:checked){
+    border-left-color:#b400ff!important;
+    color:#e066ff!important;
+    background:rgba(180,0,255,0.12)!important;
+    box-shadow:inset 0 0 20px rgba(180,0,255,0.05)!important;
 }
 
 /* ── Top bar ── */
-.topbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 0 14px;
-    border-bottom: 1px solid #0e1e35;
-    margin-bottom: 24px;
+.topbar{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:16px 0 16px;
+    border-bottom:1px solid rgba(180,0,255,0.2);
+    margin-bottom:22px;
+    position:relative;
 }
-.topbar-brand {
-    display: flex;
-    align-items: center;
-    gap: 12px;
+.topbar::after{
+    content:'';position:absolute;bottom:-1px;left:0;width:200px;height:1px;
+    background:linear-gradient(90deg,#b400ff,transparent);
 }
-.brand-icon {
-    width: 34px; height: 34px;
-    background: linear-gradient(135deg, #1ea0ff 0%, #0ef0a0 100%);
-    border-radius: 8px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 17px;
-    flex-shrink: 0;
+.brand{display:flex;align-items:center;gap:14px;}
+.brand-logo{
+    font-family:'Orbitron',monospace;
+    font-size:22px;font-weight:900;
+    background:linear-gradient(135deg,#ff00cc,#b400ff,#6600ff);
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+    letter-spacing:0.15em;
+    filter:drop-shadow(0 0 12px rgba(180,0,255,0.6));
 }
-.brand-name {
-    font-size: 15px;
-    font-weight: 600;
-    color: #e8f4ff;
-    letter-spacing: 0.03em;
+.brand-sub{font-size:9px;color:#4a2a7a;letter-spacing:0.2em;text-transform:uppercase;margin-top:2px;}
+.topbar-right{display:flex;align-items:center;gap:18px;}
+.live-pill{
+    display:flex;align-items:center;gap:7px;
+    font-family:'Share Tech Mono',monospace;
+    font-size:10px;color:#ff00cc;letter-spacing:0.08em;
 }
-.brand-tag {
-    font-size: 10px;
-    color: #2a4a6f;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    margin-top: 1px;
+.blink{
+    width:7px;height:7px;border-radius:50%;background:#ff00cc;
+    box-shadow:0 0 8px #ff00cc,0 0 16px rgba(255,0,204,0.4);
+    animation:blink 1.2s ease-in-out infinite;
 }
-.topbar-right {
-    display: flex;
-    align-items: center;
-    gap: 20px;
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:0.3;}}
+.tb-clock{
+    font-family:'Share Tech Mono',monospace;font-size:11px;
+    color:#6600ff;letter-spacing:0.06em;
 }
-.topbar-pill {
-    display: flex; align-items: center; gap: 6px;
-    font-size: 11px; color: #0ef0a0;
-    font-family: 'JetBrains Mono', monospace;
-    letter-spacing: 0.04em;
-}
-.pulse {
-    width: 7px; height: 7px; border-radius: 50%;
-    background: #0ef0a0;
-    animation: pulseAnim 2s ease-in-out infinite;
-}
-@keyframes pulseAnim {
-    0%,100% { opacity:1; box-shadow: 0 0 0 0 rgba(14,240,160,.5); }
-    50%      { opacity:.7; box-shadow: 0 0 0 5px rgba(14,240,160,0); }
-}
-.topbar-clock {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 12px;
-    color: #2a4a6f;
-}
-.topbar-badge {
-    font-size: 10px;
-    padding: 3px 10px;
-    border-radius: 4px;
-    background: rgba(30,160,255,0.1);
-    border: 1px solid rgba(30,160,255,0.25);
-    color: #1ea0ff;
-    font-family: 'JetBrains Mono', monospace;
-    letter-spacing: 0.05em;
+.tb-badge{
+    font-family:'Share Tech Mono',monospace;font-size:9px;
+    padding:4px 12px;border-radius:2px;
+    background:rgba(180,0,255,0.12);
+    border:1px solid rgba(180,0,255,0.4);
+    color:#b400ff;letter-spacing:0.1em;
 }
 
 /* ── KPI Cards ── */
-.kpi-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 12px;
-    margin-bottom: 22px;
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;}
+.kpi{
+    background:linear-gradient(135deg,#0d0120 0%,#0a0118 100%);
+    border:1px solid rgba(180,0,255,0.2);
+    border-radius:8px;
+    padding:16px 18px;
+    position:relative;overflow:hidden;
+    transition:border-color 0.3s;
 }
-.kpi {
-    background: #0a1120;
-    border: 1px solid #0e1e35;
-    border-radius: 10px;
-    padding: 16px 18px;
-    position: relative;
-    overflow: hidden;
+.kpi::before{
+    content:'';position:absolute;top:0;left:0;right:0;height:1px;
 }
-.kpi::after {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 1px;
+.kpi-purple::before{background:linear-gradient(90deg,#b400ff,rgba(180,0,255,0.1));}
+.kpi-pink::before  {background:linear-gradient(90deg,#ff00cc,rgba(255,0,204,0.1));}
+.kpi-cyan::before  {background:linear-gradient(90deg,#00ffee,rgba(0,255,238,0.1));}
+.kpi-red::before   {background:linear-gradient(90deg,#ff003c,rgba(255,0,60,0.1));}
+.kpi::after{
+    content:'';
+    position:absolute;top:-40%;right:-20%;
+    width:80px;height:80px;border-radius:50%;
+    filter:blur(30px);opacity:0.15;
 }
-.kpi-blue::after  { background: linear-gradient(90deg,#1ea0ff,transparent); }
-.kpi-green::after { background: linear-gradient(90deg,#0ef0a0,transparent); }
-.kpi-red::after   { background: linear-gradient(90deg,#ff3355,transparent); }
-.kpi-amber::after { background: linear-gradient(90deg,#ffaa00,transparent); }
-.kpi-label {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    color: #2a4a6f;
-    margin-bottom: 10px;
+.kpi-purple::after{background:#b400ff;}
+.kpi-pink::after  {background:#ff00cc;}
+.kpi-cyan::after  {background:#00ffee;}
+.kpi-red::after   {background:#ff003c;}
+.kpi-label{font-size:9px;letter-spacing:0.14em;text-transform:uppercase;color:#4a2a7a;margin-bottom:10px;font-family:'Share Tech Mono',monospace;}
+.kpi-value{
+    font-family:'Orbitron',monospace;font-size:26px;font-weight:700;line-height:1;margin-bottom:6px;
 }
-.kpi-value {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 28px;
-    font-weight: 500;
-    line-height: 1;
-    margin-bottom: 6px;
-}
-.kpi-blue  .kpi-value { color: #1ea0ff; }
-.kpi-green .kpi-value { color: #0ef0a0; }
-.kpi-red   .kpi-value { color: #ff3355; }
-.kpi-amber .kpi-value { color: #ffaa00; }
-.kpi-sub {
-    font-size: 10px;
-    color: #2a4a6f;
-}
+.kpi-purple .kpi-value{color:#cc66ff;text-shadow:0 0 20px rgba(180,0,255,0.5);}
+.kpi-pink   .kpi-value{color:#ff66dd;text-shadow:0 0 20px rgba(255,0,204,0.5);}
+.kpi-cyan   .kpi-value{color:#66ffee;text-shadow:0 0 20px rgba(0,255,238,0.5);}
+.kpi-red    .kpi-value{color:#ff4466;text-shadow:0 0 20px rgba(255,0,60,0.5);}
+.kpi-sub{font-size:9px;color:#3a1a5a;font-family:'Share Tech Mono',monospace;letter-spacing:0.06em;}
 
 /* ── Panels ── */
-.panel {
-    background: #0a1120;
-    border: 1px solid #0e1e35;
-    border-radius: 10px;
-    overflow: hidden;
-    margin-bottom: 14px;
+.panel{
+    background:linear-gradient(135deg,#0a0118 0%,#08010f 100%);
+    border:1px solid rgba(180,0,255,0.18);
+    border-radius:10px;overflow:hidden;margin-bottom:14px;
+    box-shadow:0 4px 30px rgba(100,0,180,0.06);
 }
-.panel-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 16px;
-    border-bottom: 1px solid #0e1e35;
+.ph{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:11px 16px;
+    border-bottom:1px solid rgba(180,0,255,0.12);
+    background:rgba(180,0,255,0.04);
 }
-.panel-title {
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: #4a6a8f;
+.pt{
+    font-family:'Orbitron',monospace;font-size:9px;font-weight:600;
+    letter-spacing:0.18em;text-transform:uppercase;color:#7a30aa;
 }
-.panel-body { padding: 16px; }
-.panel-badge {
-    font-size: 9px;
-    padding: 2px 8px;
-    border-radius: 3px;
-    font-family: 'JetBrains Mono', monospace;
-    letter-spacing: 0.06em;
+.pb-body{padding:14px 16px;}
+.pbadge{
+    font-family:'Share Tech Mono',monospace;font-size:9px;
+    padding:2px 9px;border-radius:2px;letter-spacing:0.08em;
 }
-.pb-green { background: rgba(14,240,160,.08); color:#0ef0a0; border:1px solid rgba(14,240,160,.2); }
-.pb-blue  { background: rgba(30,160,255,.08); color:#1ea0ff; border:1px solid rgba(30,160,255,.2); }
-.pb-red   { background: rgba(255,51,85,.08);  color:#ff3355; border:1px solid rgba(255,51,85,.2); }
-.pb-amber { background: rgba(255,170,0,.08);  color:#ffaa00; border:1px solid rgba(255,170,0,.2); }
+.pb-live  {background:rgba(255,0,204,0.1);color:#ff00cc;border:1px solid rgba(255,0,204,0.3);}
+.pb-purple{background:rgba(180,0,255,0.1);color:#cc66ff;border:1px solid rgba(180,0,255,0.3);}
+.pb-cyan  {background:rgba(0,255,238,0.08);color:#66ffee;border:1px solid rgba(0,255,238,0.25);}
+.pb-red   {background:rgba(255,0,60,0.08); color:#ff4466;border:1px solid rgba(255,0,60,0.25);}
+
+/* ── Threat feed ── */
+.feed{max-height:300px;overflow-y:auto;}
+.feed::-webkit-scrollbar{width:2px;}
+.feed::-webkit-scrollbar-thumb{background:rgba(180,0,255,0.3);}
+.fi{
+    display:flex;align-items:flex-start;gap:10px;
+    padding:9px 0;border-bottom:1px solid rgba(180,0,255,0.08);
+    font-size:11px;
+}
+.fi:last-child{border:none;}
+.fdot{width:7px;height:7px;border-radius:50%;flex-shrink:0;margin-top:3px;}
+.fdot-crit{background:#ff003c;box-shadow:0 0 8px #ff003c,0 0 16px rgba(255,0,60,0.3);}
+.fdot-high{background:#ff00cc;box-shadow:0 0 6px rgba(255,0,204,0.6);}
+.fdot-med {background:#ffaa00;box-shadow:0 0 5px rgba(255,170,0,0.4);}
+.fdot-low {background:#cc66ff;}
+.fmsg{color:#c8a8e8;flex:1;line-height:1.5;}
+.ftime{font-family:'Share Tech Mono',monospace;font-size:9px;color:#3a1a5a;flex-shrink:0;}
 
 /* ── Data rows ── */
-.drow {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 9px 0;
-    border-bottom: 1px solid #0e1e35;
-    font-size: 11px;
+.dr{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:8px 0;border-bottom:1px solid rgba(180,0,255,0.07);font-size:11px;
 }
-.drow:last-child { border: none; }
-.drow-label { color: #4a6a8f; }
-.drow-value { font-family: 'JetBrains Mono', monospace; color: #c8d8e8; }
-.drow-value.green { color: #0ef0a0; }
-.drow-value.blue  { color: #1ea0ff; }
-.drow-value.red   { color: #ff3355; }
-.drow-value.amber { color: #ffaa00; }
+.dr:last-child{border:none;}
+.dl{color:#4a2a7a;font-size:10px;letter-spacing:0.04em;}
+.dv{font-family:'Share Tech Mono',monospace;font-size:11px;}
+.dv-p{color:#cc66ff;} .dv-g{color:#66ffee;} .dv-r{color:#ff4466;} .dv-a{color:#ffaa00;} .dv-w{color:#e0d0ff;}
 
-/* ── Threat / Safe result ── */
-.result-box {
-    border-radius: 10px;
-    padding: 20px 22px;
-    margin: 12px 0;
+/* ── PMU Cards ── */
+.pmugrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;}
+.pcard{
+    background:linear-gradient(135deg,#0a0118,#07010e);
+    border:1px solid rgba(180,0,255,0.18);border-radius:8px;padding:14px;position:relative;
+    transition:border-color 0.3s,box-shadow 0.3s;
 }
-.result-threat {
-    background: rgba(255,51,85,0.05);
-    border: 1px solid rgba(255,51,85,0.3);
-    border-left: 3px solid #ff3355;
+.pcard.alert{
+    border-color:rgba(255,0,60,0.5)!important;
+    box-shadow:0 0 20px rgba(255,0,60,0.08),inset 0 0 20px rgba(255,0,60,0.03)!important;
 }
-.result-safe {
-    background: rgba(14,240,160,0.04);
-    border: 1px solid rgba(14,240,160,0.25);
-    border-left: 3px solid #0ef0a0;
-}
-.result-warn {
-    background: rgba(255,170,0,0.04);
-    border: 1px solid rgba(255,170,0,0.25);
-    border-left: 3px solid #ffaa00;
-}
-.result-title { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
-.result-meta  { font-size: 11px; color: #4a6a8f; line-height: 1.8; }
+.pid{font-family:'Orbitron',monospace;font-size:10px;font-weight:600;color:#b400ff;margin-bottom:2px;letter-spacing:0.1em;}
+.ploc{font-size:9px;color:#3a1a5a;margin-bottom:10px;font-family:'Share Tech Mono',monospace;letter-spacing:0.08em;}
+.pstat{position:absolute;top:12px;right:12px;width:8px;height:8px;border-radius:50%;}
+.pstat-ok   {background:#66ffee;box-shadow:0 0 8px #66ffee,0 0 16px rgba(0,255,238,0.3);}
+.pstat-alert{background:#ff003c;box-shadow:0 0 8px #ff003c;animation:blink 0.8s infinite;}
 
-/* ── Timeline / Feed ── */
-.feed-item {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    padding: 9px 0;
-    border-bottom: 1px solid #0e1e35;
-    font-size: 11px;
+/* ── Result boxes ── */
+.rbox{border-radius:8px;padding:18px 20px;margin:10px 0;}
+.rbox-threat{
+    background:linear-gradient(135deg,rgba(255,0,60,0.06),rgba(180,0,255,0.04));
+    border:1px solid rgba(255,0,60,0.35);border-left:3px solid #ff003c;
 }
-.feed-item:last-child { border: none; }
-.feed-dot {
-    width: 7px; height: 7px;
-    border-radius: 50%;
-    flex-shrink: 0;
-    margin-top: 3px;
+.rbox-warn{
+    background:linear-gradient(135deg,rgba(255,170,0,0.05),rgba(180,0,255,0.03));
+    border:1px solid rgba(255,170,0,0.3);border-left:3px solid #ffaa00;
 }
-.feed-dot.red   { background:#ff3355; box-shadow:0 0 6px #ff3355; }
-.feed-dot.amber { background:#ffaa00; }
-.feed-dot.green { background:#0ef0a0; }
-.feed-dot.blue  { background:#1ea0ff; }
-.feed-text { color: #c8d8e8; flex: 1; line-height: 1.5; }
-.feed-time { font-family:'JetBrains Mono',monospace; font-size:10px; color:#2a4a6f; flex-shrink:0; }
+.rbox-safe{
+    background:linear-gradient(135deg,rgba(0,255,238,0.04),rgba(180,0,255,0.03));
+    border:1px solid rgba(0,255,238,0.25);border-left:3px solid #66ffee;
+}
+.rtitle{font-family:'Orbitron',monospace;font-size:14px;font-weight:600;margin-bottom:7px;letter-spacing:0.06em;}
+.rmeta{font-size:11px;color:#6a4a9a;line-height:1.8;}
+
+/* ── Confidence bars ── */
+.cbar{margin-bottom:9px;}
+.ctop{display:flex;justify-content:space-between;font-size:10px;margin-bottom:4px;}
+.clbl{color:#4a2a7a;font-family:'Share Tech Mono',monospace;letter-spacing:0.05em;}
+.cval{font-family:'Share Tech Mono',monospace;color:#cc66ff;}
+.cbg{height:4px;background:rgba(180,0,255,0.1);border-radius:2px;overflow:hidden;}
+.cfill{height:100%;border-radius:2px;transition:width 0.7s ease;}
 
 /* ── Buttons ── */
-.stButton > button {
-    background: rgba(30,160,255,0.08) !important;
-    border: 1px solid rgba(30,160,255,0.35) !important;
-    color: #1ea0ff !important;
-    font-family: 'DM Sans', sans-serif !important;
-    font-size: 12px !important;
-    font-weight: 500 !important;
-    letter-spacing: 0.05em !important;
-    border-radius: 7px !important;
-    padding: 9px 20px !important;
-    transition: all 0.15s !important;
-    width: 100% !important;
+.stButton>button{
+    background:linear-gradient(135deg,rgba(180,0,255,0.15),rgba(255,0,204,0.1))!important;
+    border:1px solid rgba(180,0,255,0.5)!important;
+    color:#cc66ff!important;
+    font-family:'Orbitron',monospace!important;
+    font-size:10px!important;font-weight:600!important;
+    letter-spacing:0.12em!important;
+    border-radius:6px!important;padding:10px 20px!important;
+    width:100%!important;
+    transition:all 0.2s!important;
+    text-shadow:0 0 10px rgba(180,0,255,0.4)!important;
+    box-shadow:0 0 15px rgba(180,0,255,0.1)!important;
 }
-.stButton > button:hover {
-    background: rgba(30,160,255,0.15) !important;
-    border-color: rgba(30,160,255,0.6) !important;
+.stButton>button:hover{
+    background:linear-gradient(135deg,rgba(180,0,255,0.25),rgba(255,0,204,0.15))!important;
+    box-shadow:0 0 25px rgba(180,0,255,0.25)!important;
+    border-color:rgba(255,0,204,0.7)!important;
 }
 
-/* ── Sliders ── */
-.stSlider label { font-size: 11px !important; color: #4a6a8f !important; font-family: 'DM Sans', sans-serif !important; }
-.stSlider [data-baseweb="slider"] { padding: 6px 0; }
-
-/* ── Select / multiselect ── */
-.stMultiSelect label, .stSelectbox label {
-    font-size: 11px !important; color: #4a6a8f !important;
-}
-.stMultiSelect [data-baseweb="select"] > div,
-.stSelectbox [data-baseweb="select"] > div {
-    background: #0a1120 !important;
-    border-color: #0e1e35 !important;
-    border-radius: 7px !important;
+/* ── Form controls ── */
+.stSlider label{font-size:10px!important;color:#4a2a7a!important;font-family:'Share Tech Mono',monospace!important;letter-spacing:0.06em!important;}
+.stSlider [data-baseweb="slider"] [data-testid="stSliderThumb"]{background:#b400ff!important;border-color:#ff00cc!important;}
+.stMultiSelect label,.stSelectbox label{font-size:10px!important;color:#4a2a7a!important;font-family:'Share Tech Mono',monospace!important;}
+.stMultiSelect [data-baseweb="select"]>div,.stSelectbox [data-baseweb="select"]>div{
+    background:#0a0118!important;border-color:rgba(180,0,255,0.3)!important;border-radius:6px!important;
 }
 
 /* ── Tabs ── */
-.stTabs [data-baseweb="tab-list"] {
-    background: transparent !important;
-    border-bottom: 1px solid #0e1e35;
-    gap: 0;
+.stTabs [data-baseweb="tab-list"]{background:transparent!important;border-bottom:1px solid rgba(180,0,255,0.15);gap:0;}
+.stTabs [data-baseweb="tab"]{
+    font-family:'Share Tech Mono',monospace!important;font-size:10px!important;
+    letter-spacing:0.1em!important;text-transform:uppercase!important;
+    color:#3a1a5a!important;background:transparent!important;
+    border:none!important;border-bottom:2px solid transparent!important;
+    padding:10px 18px!important;border-radius:0!important;
 }
-.stTabs [data-baseweb="tab"] {
-    font-size: 11px !important;
-    font-weight: 500 !important;
-    letter-spacing: 0.07em !important;
-    text-transform: uppercase !important;
-    color: #2a4a6f !important;
-    background: transparent !important;
-    border: none !important;
-    border-bottom: 2px solid transparent !important;
-    padding: 10px 18px !important;
-    border-radius: 0 !important;
-}
-.stTabs [aria-selected="true"] {
-    color: #1ea0ff !important;
-    border-bottom-color: #1ea0ff !important;
-}
-.stTabs [data-baseweb="tab-panel"] {
-    background: transparent !important;
-    padding-top: 18px;
-}
+.stTabs [aria-selected="true"]{color:#cc66ff!important;border-bottom-color:#b400ff!important;text-shadow:0 0 10px rgba(180,0,255,0.5)!important;}
+.stTabs [data-baseweb="tab-panel"]{background:transparent!important;padding-top:18px;}
 
-/* ── Streamlit alerts ── */
-.stSuccess {
-    background: rgba(14,240,160,0.06) !important;
-    border: 1px solid rgba(14,240,160,0.25) !important;
-    border-radius: 8px !important;
-    color: #0ef0a0 !important;
-}
-.stWarning {
-    background: rgba(255,170,0,0.06) !important;
-    border: 1px solid rgba(255,170,0,0.25) !important;
-    border-radius: 8px !important;
-    color: #ffaa00 !important;
-}
-.stInfo {
-    background: rgba(30,160,255,0.06) !important;
-    border: 1px solid rgba(30,160,255,0.25) !important;
-    border-radius: 8px !important;
-    color: #1ea0ff !important;
-}
+/* ── Alerts ── */
+.stSuccess{background:rgba(0,255,238,0.05)!important;border:1px solid rgba(0,255,238,0.2)!important;border-radius:7px!important;color:#66ffee!important;}
+.stWarning{background:rgba(255,170,0,0.05)!important;border:1px solid rgba(255,170,0,0.2)!important;border-radius:7px!important;color:#ffaa00!important;}
+.stInfo   {background:rgba(180,0,255,0.06)!important;border:1px solid rgba(180,0,255,0.2)!important;border-radius:7px!important;color:#cc66ff!important;}
 
 /* ── Dataframe ── */
-[data-testid="stDataFrame"] {
-    border: 1px solid #0e1e35 !important;
-    border-radius: 8px !important;
-    overflow: hidden;
+[data-testid="stDataFrame"]{border:1px solid rgba(180,0,255,0.2)!important;border-radius:8px!important;}
+
+/* ── Mono block ── */
+.monoblock{
+    background:#04000d;border:1px solid rgba(180,0,255,0.2);border-radius:7px;
+    padding:12px 14px;font-family:'Share Tech Mono',monospace;
+    font-size:10px;color:#cc66ff;word-break:break-all;line-height:1.9;margin-bottom:10px;
 }
 
-/* ── Code ── */
-.stCodeBlock { background: #04080f !important; border: 1px solid #0e1e35 !important; border-radius: 7px !important; }
-code { color: #1ea0ff !important; font-family: 'JetBrains Mono', monospace !important; }
-
-/* ── Section divider ── */
-hr { border: none; border-top: 1px solid #0e1e35 !important; margin: 20px 0 !important; }
+/* ── Divider ── */
+hr{border:none!important;border-top:1px solid rgba(180,0,255,0.12)!important;margin:18px 0!important;}
 
 /* ── Scrollbar ── */
-::-webkit-scrollbar { width: 4px; height: 4px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #0e1e35; border-radius: 2px; }
-
-/* ── Grid helpers ── */
-.g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-.g3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
-.g3-1 { display: grid; grid-template-columns: 3fr 2fr; gap: 14px; }
-
-/* ── Enc output ── */
-.mono-block {
-    background: #04080f;
-    border: 1px solid #0e1e35;
-    border-radius: 7px;
-    padding: 12px 14px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
-    color: #1ea0ff;
-    word-break: break-all;
-    line-height: 1.9;
-    margin-bottom: 10px;
-}
-
-/* ── PMU cards ── */
-.pmu-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px; }
-.pmu-card {
-    background: #04080f;
-    border: 1px solid #0e1e35;
-    border-radius: 9px;
-    padding: 14px;
-    position: relative;
-}
-.pmu-card.alert-card { border-color: rgba(255,51,85,0.4); }
-.pmu-id   { font-family:'JetBrains Mono',monospace; font-size:11px; color:#1ea0ff; font-weight:500; margin-bottom:3px; }
-.pmu-loc  { font-size:10px; color:#2a4a6f; margin-bottom:12px; }
-.pmu-stat { position:absolute; top:12px; right:12px; width:7px; height:7px; border-radius:50%; }
-.pmu-stat.ok    { background:#0ef0a0; box-shadow:0 0 5px #0ef0a0; }
-.pmu-stat.alert { background:#ff3355; box-shadow:0 0 7px #ff3355; animation: pulseAnim .9s infinite; }
-
-/* ── Confidence bars ── */
-.conf-row { margin-bottom: 10px; }
-.conf-top { display:flex; justify-content:space-between; font-size:10px; margin-bottom:5px; }
-.conf-lbl { color:#4a6a8f; }
-.conf-val { font-family:'JetBrains Mono',monospace; color:#c8d8e8; }
-.conf-bg  { height:4px; background:#0e1e35; border-radius:2px; overflow:hidden; }
-.conf-fill{ height:100%; border-radius:2px; transition: width 0.6s ease; }
+::-webkit-scrollbar{width:3px;height:3px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:rgba(180,0,255,0.3);border-radius:2px;}
 
 /* ── Empty state ── */
-.empty-state {
-    text-align: center;
-    padding: 50px 20px;
-    color: #1a3050;
-    font-size: 12px;
-    letter-spacing: 0.05em;
-}
-
-/* ── Sidebar inner ── */
-.sb-section {
-    padding: 0 20px;
-    margin: 6px 0;
-}
-.sb-label {
-    font-size: 9px;
-    text-transform: uppercase;
-    letter-spacing: 0.14em;
-    color: #152030;
-    margin-bottom: 8px;
-    margin-top: 18px;
-    padding: 0 20px;
-}
-.sb-status {
-    font-size: 10px;
-    line-height: 2.5;
-    color: #4a6a8f;
-    padding: 0 20px;
-}
+.empty{text-align:center;padding:50px 20px;color:#2a0a4a;font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:0.08em;}
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
 
-
-# ─────────────────────────────────────────────
-#  PLOTLY THEME
-# ─────────────────────────────────────────────
-BASE_LAYOUT = dict(
-    paper_bgcolor='#0a1120',
-    plot_bgcolor='#04080f',
-    font=dict(color='#4a6a8f', family='JetBrains Mono', size=10),
-    xaxis=dict(gridcolor='#0e1e35', linecolor='#0e1e35', tickcolor='#0e1e35', zeroline=False),
-    yaxis=dict(gridcolor='#0e1e35', linecolor='#0e1e35', tickcolor='#0e1e35', zeroline=False),
-    margin=dict(l=44, r=16, t=24, b=36),
-    legend=dict(bgcolor='rgba(0,0,0,0)', font=dict(size=10), borderwidth=0),
+# ── Plotly theme ──────────────────────────────
+BL = dict(
+    paper_bgcolor='#0a0118', plot_bgcolor='#05010f',
+    font=dict(color='#4a2a7a', family='Share Tech Mono', size=10),
+    xaxis=dict(gridcolor='rgba(180,0,255,0.08)', linecolor='rgba(180,0,255,0.15)',
+               tickcolor='rgba(180,0,255,0.15)', zeroline=False),
+    yaxis=dict(gridcolor='rgba(180,0,255,0.08)', linecolor='rgba(180,0,255,0.15)',
+               tickcolor='rgba(180,0,255,0.15)', zeroline=False),
+    margin=dict(l=44,r=16,t=20,b=36),
+    legend=dict(bgcolor='rgba(0,0,0,0)',font=dict(size=10),borderwidth=0),
 )
-def pl(fig, **kw):
-    fig.update_layout(**{**BASE_LAYOUT, **kw})
-    return fig
+def pl(fig,**kw):
+    fig.update_layout(**{**BL,**kw}); return fig
 
-SEQ  = ['#1ea0ff','#0ef0a0','#ff3355','#ffaa00','#aa55ff','#ff6688']
-SAFE = '#0ef0a0'
-THRT = '#ff3355'
-WARN = '#ffaa00'
-BLUE = '#1ea0ff'
+PURPLE='#b400ff'; PINK='#ff00cc'; CYAN='#66ffee'; RED='#ff003c'; AMBER='#ffaa00'
+SEQ=[PURPLE,PINK,CYAN,RED,AMBER,'#8844ff']
 
-
-# ─────────────────────────────────────────────
-#  DATA
-# ─────────────────────────────────────────────
+# ── Data ─────────────────────────────────────
 @st.cache_data
 def gen_pmu():
-    np.random.seed(42)
-    buses = [3,5,0,9,13,7]
-    rows  = []
+    np.random.seed(42); buses=[3,5,0,9,13,7]; rows=[]
     for i in range(300):
-        b = buses[i % 6]
-        rows.append(dict(
-            timestamp=round(i*0.05,4), bus_id=b,
-            vm_pu    =round(1.05+np.random.normal(0,.02),6),
-            va_degree=round(-10 +np.random.normal(0,1.5),6),
-            im_pu    =round(0.5 +np.random.normal(0,.05),6),
-            ia_degree=round(-10 +np.random.normal(0,1.0),6),
-            p_mw     =round(50  +np.random.normal(0,5),6),
-            q_mvar   =round(20  +np.random.normal(0,3),6),
-            frequency=round(50  +np.random.normal(0,.01),4),
-            rocof    =round(np.random.normal(0,.005),5),
-        ))
+        b=buses[i%6]
+        rows.append(dict(timestamp=round(i*.05,4),bus_id=b,
+            vm_pu=round(1.05+np.random.normal(0,.02),6),
+            va_degree=round(-10+np.random.normal(0,1.5),6),
+            p_mw=round(50+np.random.normal(0,5),6),
+            q_mvar=round(20+np.random.normal(0,3),6),
+            frequency=round(50+np.random.normal(0,.01),4),
+            rocof=round(np.random.normal(0,.005),5)))
     return pd.DataFrame(rows)
 
 @st.cache_data
-def gen_attacks():
+def gen_atk():
     np.random.seed(42)
     lmap={0:'Normal',1:'FDI',2:'Replay',3:'DoS',4:'MITM',5:'Timestamp'}
     rows=[]
@@ -544,638 +375,541 @@ def gen_attacks():
             vm=1.05+np.random.normal(0,.02)
             if label==1: vm+=np.random.normal(0,.05)
             if label==3: vm=0.0 if np.random.rand()<.6 else vm
-            rows.append(dict(
-                vm_pu=round(vm,6), va_degree=round(-10+np.random.normal(0,1.5),6),
-                p_mw=round(50+np.random.normal(0,5),6), q_mvar=round(20+np.random.normal(0,3),6),
-                frequency=round(50+np.random.normal(0,.01),4), rocof=round(np.random.normal(0,.005),5),
-                timestamp=round(np.random.uniform(0,2.5),4),
-                label=label, label_name=lmap[label],
-            ))
+            rows.append(dict(vm_pu=round(vm,6),
+                va_degree=round(-10+np.random.normal(0,1.5),6),
+                p_mw=round(50+np.random.normal(0,5),6),
+                frequency=round(50+np.random.normal(0,.01),4),
+                rocof=round(np.random.normal(0,.005),5),
+                label=label,label_name=lmap[label]))
     return pd.DataFrame(rows)
 
-df_pmu    = gen_pmu()
-df_attack = gen_attacks()
+df_pmu=gen_pmu(); df_atk=gen_atk()
 
+# ── Helpers ──────────────────────────────────
+def kpi(label,value,sub,v='purple'):
+    return f'<div class="kpi kpi-{v}"><div class="kpi-label">{label}</div><div class="kpi-value">{value}</div><div class="kpi-sub">{sub}</div></div>'
 
-# ─────────────────────────────────────────────
-#  HELPERS
-# ─────────────────────────────────────────────
-def kpi_html(label, value, sub, variant='blue'):
-    return f"""<div class="kpi kpi-{variant}">
-        <div class="kpi-label">{label}</div>
-        <div class="kpi-value">{value}</div>
-        <div class="kpi-sub">{sub}</div>
-    </div>"""
+def po(title,badge='',bc='pb-purple'):
+    b=f'<span class="pbadge {bc}">{badge}</span>' if badge else ''
+    return f'<div class="panel"><div class="ph"><span class="pt">{title}</span>{b}</div><div class="pb-body">'
 
-def panel_open(title, badge='', badge_cls='pb-blue'):
-    b = f'<span class="panel-badge {badge_cls}">{badge}</span>' if badge else ''
-    return f'<div class="panel"><div class="panel-head"><span class="panel-title">{title}</span>{b}</div><div class="panel-body">'
+def pc(): return '</div></div>'
 
-def panel_close():
-    return '</div></div>'
+def dr(l,v,vc='dv-w'):
+    return f'<div class="dr"><span class="dl">{l}</span><span class="dv {vc}">{v}</span></div>'
 
-def drow(label, value, cls=''):
-    return f'<div class="drow"><span class="drow-label">{label}</span><span class="drow-value {cls}">{value}</span></div>'
+def feed_item(dot,msg,t):
+    return f'<div class="fi"><div class="fdot {dot}"></div><div class="fmsg">{msg}</div><div class="ftime">{t}</div></div>'
 
-def now_str():
-    return datetime.utcnow().strftime('%H:%M:%S')
+def cm_fig(cm,labels,title):
+    cmap=matplotlib.colors.LinearSegmentedColormap.from_list('nx',['#05010f','#3a006a','#b400ff','#ff00cc'])
+    fig,ax=plt.subplots(figsize=(6.5,4.8))
+    fig.patch.set_facecolor('#0a0118'); ax.set_facecolor('#05010f')
+    sns.heatmap(cm,annot=True,fmt='d',cmap=cmap,xticklabels=labels,yticklabels=labels,ax=ax,
+                linewidths=0.4,linecolor='rgba(180,0,255,0.1)',
+                annot_kws={"size":9,"family":"monospace","color":"#e0d0ff"})
+    ax.set_title(title,color='#7a30aa',fontsize=10,pad=10,family='monospace')
+    ax.set_xlabel('Predicted',color='#4a2a7a',fontsize=9)
+    ax.set_ylabel('Actual',   color='#4a2a7a',fontsize=9)
+    ax.tick_params(colors='#4a2a7a',labelsize=8)
+    plt.setp(ax.get_xticklabels(),rotation=30,ha='right')
+    plt.tight_layout(pad=1.2); return fig
 
-def cm_fig(cm, labels, cmap_name, title):
-    fig, ax = plt.subplots(figsize=(6.5, 4.8))
-    fig.patch.set_facecolor('#0a1120')
-    ax.set_facecolor('#04080f')
-    cmap = plt.get_cmap(cmap_name)
-    sns.heatmap(cm, annot=True, fmt='d', cmap=cmap,
-                xticklabels=labels, yticklabels=labels, ax=ax,
-                linewidths=0.4, linecolor='#0e1e35',
-                annot_kws={"size": 9, "family": "monospace", "color": "#c8d8e8"})
-    ax.set_title(title, color='#4a6a8f', fontsize=10, pad=10, family='monospace')
-    ax.set_xlabel('Predicted', color='#2a4a6f', fontsize=9)
-    ax.set_ylabel('Actual',    color='#2a4a6f', fontsize=9)
-    ax.tick_params(colors='#4a6a8f', labelsize=8)
-    plt.setp(ax.get_xticklabels(), rotation=30, ha='right')
-    plt.tight_layout(pad=1.2)
-    return fig
-
-
-# ─────────────────────────────────────────────
-#  SIDEBAR
-# ─────────────────────────────────────────────
+# ── Sidebar ──────────────────────────────────
 with st.sidebar:
     st.markdown("""
-    <div style="padding:20px 20px 0;">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:2px;">
-            <div style="width:32px;height:32px;background:linear-gradient(135deg,#1ea0ff,#0ef0a0);
-                        border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;">🛡</div>
-            <div>
-                <div style="font-size:13px;font-weight:600;color:#e8f4ff;letter-spacing:.03em;">GridShield</div>
-                <div style="font-size:9px;color:#152030;letter-spacing:.12em;text-transform:uppercase;">SOC Platform</div>
-            </div>
+    <div style="padding:22px 22px 0;">
+        <div style="font-family:'Orbitron',monospace;font-size:18px;font-weight:900;
+             background:linear-gradient(135deg,#ff00cc,#b400ff,#6600ff);
+             -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+             letter-spacing:0.18em;filter:drop-shadow(0 0 12px rgba(180,0,255,0.7));">
+            NEXUS
+        </div>
+        <div style="font-size:8px;color:#3a1a5a;letter-spacing:0.22em;text-transform:uppercase;margin-top:3px;font-family:'Share Tech Mono',monospace;">
+            Grid Defence System
         </div>
     </div>
-    <div style="height:1px;background:#0e1e35;margin:16px 0 10px;"></div>
+    <div style="height:1px;background:linear-gradient(90deg,rgba(180,0,255,0.4),transparent);margin:16px 0 12px;"></div>
     """, unsafe_allow_html=True)
 
-    page = st.radio("", [
-        "Overview",
-        "PMU Network",
-        "Secure Comms",
-        "Threat Detection",
-        "Analytics",
-        "Fault Monitor",
-    ], label_visibility="collapsed")
+    page=st.radio("",[
+        "// OVERVIEW",
+        "// PMU NETWORK",
+        "// SECURE COMMS",
+        "// THREAT INTEL",
+        "// ANALYTICS",
+        "// FAULT MONITOR",
+    ],label_visibility="collapsed")
 
     st.markdown("""
-    <div style="height:1px;background:#0e1e35;margin:12px 0;"></div>
-    <div class="sb-label">Grid Status</div>
-    <div class="sb-status">
-        <span style="color:#0ef0a0">●</span>&nbsp; 6 Sensors Online<br>
-        <span style="color:#0ef0a0">●</span>&nbsp; Encryption Active<br>
-        <span style="color:#0ef0a0">●</span>&nbsp; AI Models Running<br>
-        <span style="color:#ffaa00">●</span>&nbsp; 2 Alerts Pending
+    <div style="height:1px;background:linear-gradient(90deg,rgba(180,0,255,0.2),transparent);margin:14px 0 12px;"></div>
+    <div style="padding:0 22px;">
+        <div style="font-size:8px;color:#2a0a4a;letter-spacing:0.18em;text-transform:uppercase;margin-bottom:10px;font-family:'Share Tech Mono',monospace;">System Matrix</div>
+        <div style="font-family:'Share Tech Mono',monospace;font-size:10px;line-height:2.6;color:#4a2a7a;">
+            <span style="color:#66ffee;">◆</span> &nbsp;6 Sensors Online<br>
+            <span style="color:#66ffee;">◆</span> &nbsp;Encryption Active<br>
+            <span style="color:#66ffee;">◆</span> &nbsp;Threat AI Armed<br>
+            <span style="color:#ff00cc;">◆</span> &nbsp;2 Alerts Active<br>
+            <span style="color:#ffaa00;">◆</span> &nbsp;1 Pending Review
+        </div>
     </div>
-    <div style="height:1px;background:#0e1e35;margin:16px 0 12px;"></div>
-    <div class="sb-label">Network</div>
-    <div class="sb-status">
-        <span style="color:#1ea0ff">●</span>&nbsp; IEEE 14-Bus<br>
-        <span style="color:#2a4a6f">●</span>&nbsp; 6 / 6 PMUs<br>
-        <span style="color:#2a4a6f">●</span>&nbsp; AES-256-GCM
+    <div style="height:1px;background:linear-gradient(90deg,rgba(180,0,255,0.2),transparent);margin:16px 0 12px;"></div>
+    <div style="padding:0 22px;">
+        <div style="font-size:8px;color:#2a0a4a;letter-spacing:0.18em;text-transform:uppercase;margin-bottom:10px;font-family:'Share Tech Mono',monospace;">Threat Level</div>
+        <div style="font-family:'Orbitron',monospace;font-size:13px;font-weight:700;color:#ff00cc;
+             text-shadow:0 0 15px rgba(255,0,204,0.6);letter-spacing:0.1em;">ELEVATED</div>
     </div>
     <div style="position:absolute;bottom:16px;left:0;right:0;text-align:center;">
-        <div style="font-size:9px;color:#0e1e35;letter-spacing:.1em;">GridShield v2.4.1</div>
+        <div style="font-size:8px;color:#1a0830;letter-spacing:.1em;font-family:'Share Tech Mono',monospace;">NEXUS v3.1.0 — CLASSIFIED</div>
     </div>
     """, unsafe_allow_html=True)
 
-
-# ─────────────────────────────────────────────
-#  TOP BAR (rendered per page)
-# ─────────────────────────────────────────────
-page_titles = {
-    "Overview":         ("Overview","System health and threat summary"),
-    "PMU Network":      ("PMU Network","Live sensor data — 6 units online"),
-    "Secure Comms":     ("Secure Comms","Encrypted data pipeline"),
-    "Threat Detection": ("Threat Detection","AI-powered anomaly classification"),
-    "Analytics":        ("Analytics","Model performance and detection metrics"),
-    "Fault Monitor":    ("Fault Monitor","Power system fault classification"),
+# ── Page label map ──────────────────────────
+page_map={
+    "// OVERVIEW":      ("OVERVIEW",      "System health — live threat summary"),
+    "// PMU NETWORK":   ("PMU NETWORK",   "Sensor array — 6 units online"),
+    "// SECURE COMMS":  ("SECURE COMMS",  "Encrypted data pipeline"),
+    "// THREAT INTEL":  ("THREAT INTEL",  "AI-powered anomaly classification"),
+    "// ANALYTICS":     ("ANALYTICS",     "Detection metrics & model performance"),
+    "// FAULT MONITOR": ("FAULT MONITOR", "Power system fault classification"),
 }
-ptitle, psub = page_titles.get(page, (page, ""))
+pt,ps=page_map.get(page,("NEXUS",""))
+
+# ── Top bar ──────────────────────────────────
 st.markdown(f"""
 <div class="topbar">
-    <div class="topbar-brand">
-        <div class="brand-icon">🛡</div>
+    <div class="brand">
         <div>
-            <div class="brand-name">GridShield — {ptitle}</div>
-            <div class="brand-tag">{psub}</div>
+            <div class="brand-logo">NEXUS</div>
+            <div class="brand-sub">{ps}</div>
         </div>
+        <div style="width:1px;height:30px;background:rgba(180,0,255,0.2);margin:0 4px;"></div>
+        <div style="font-family:'Orbitron',monospace;font-size:11px;font-weight:600;
+             color:#7a30aa;letter-spacing:0.14em;">{pt}</div>
     </div>
     <div class="topbar-right">
-        <div class="topbar-pill"><div class="pulse"></div>All Systems Operational</div>
-        <div class="topbar-badge">6 PMUs ACTIVE</div>
-        <div class="topbar-clock">{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC</div>
+        <div class="live-pill"><div class="blink"></div>LIVE FEED</div>
+        <div class="tb-badge">THREAT LEVEL: ELEVATED</div>
+        <div class="tb-clock">{datetime.utcnow().strftime('%Y.%m.%d %H:%M:%S')} UTC</div>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════
-#  PAGE: OVERVIEW
+#  OVERVIEW
 # ══════════════════════════════════════════════
-if page == "Overview":
+if page=="// OVERVIEW":
+    k1,k2,k3,k4=st.columns(4)
+    with k1: st.markdown(kpi("Sensors Online","6/6","All units transmitting","purple"),unsafe_allow_html=True)
+    with k2: st.markdown(kpi("Detection Rate","89.4%","RF classifier armed","cyan"),  unsafe_allow_html=True)
+    with k3: st.markdown(kpi("Active Threats","2","Immediate response","red"),         unsafe_allow_html=True)
+    with k4: st.markdown(kpi("Fault Accuracy","99.1%","CNN classifier","pink"),        unsafe_allow_html=True)
 
-    # KPI row
-    k1,k2,k3,k4 = st.columns(4)
-    with k1: st.markdown(kpi_html("Sensors Online","6 / 6","All units transmitting","blue"), unsafe_allow_html=True)
-    with k2: st.markdown(kpi_html("Threat Detection Rate","89.4%","RF classifier active","green"), unsafe_allow_html=True)
-    with k3: st.markdown(kpi_html("Active Alerts","2","High severity pending","red"), unsafe_allow_html=True)
-    with k4: st.markdown(kpi_html("Fault Accuracy","99.1%","CNN classifier","blue"), unsafe_allow_html=True)
-
-    col_l, col_r = st.columns([3,2])
-
-    with col_l:
-        # Recent events feed
-        html  = panel_open("Recent Security Events", "● LIVE", "pb-green")
-        events = [
-            ("red",  "False data injection attempt on Sensor 02 — blocked",           "14:31:07"),
-            ("amber","Voltage deviation on Bus 6 — within threshold",                  "14:29:44"),
-            ("green","All 6 sensors passed integrity check",                           "14:28:12"),
-            ("red",  "Replay packet detected on uplink channel — dropped",             "14:25:50"),
-            ("amber","ROCOF spike on Bus 14 — monitoring escalated",                   "14:22:03"),
-            ("green","Encryption key rotation completed",                              "14:18:30"),
-            ("red",  "DoS pattern detected — rate limiting applied",                   "14:15:11"),
-            ("green","Fault classifier updated — zero downtime",                       "14:10:00"),
+    cl,cr=st.columns([3,2])
+    with cl:
+        # Threat feed
+        EVENTS=[
+            ("fdot-crit","[CRITICAL] False data injection on Sensor 02 — voltage spoofed +8.4%","14:31:07"),
+            ("fdot-high","[HIGH] Replay packet detected on uplink — sequence number repeated","14:29:44"),
+            ("fdot-med", "[MED]  ROCOF anomaly on Bus 14 — monitoring escalated","14:28:12"),
+            ("fdot-crit","[CRITICAL] DoS pattern — 847 anomalous packets/sec — rate limiter active","14:25:50"),
+            ("fdot-med", "[MED]  Voltage deviation Bus 6 — within secondary threshold","14:22:03"),
+            ("fdot-low", "[LOW]  Encryption key rotation completed — zero downtime","14:18:30"),
+            ("fdot-high","[HIGH] MITM signature on PDC channel — rekeying initiated","14:15:11"),
+            ("fdot-low", "[LOW]  All 6 sensors passed integrity check","14:10:00"),
+            ("fdot-crit","[CRITICAL] Timestamp manipulation — GPS offset ±42 s detected","14:06:33"),
+            ("fdot-low", "[LOW]  Fault classifier retrained — 99.1% accuracy maintained","14:00:00"),
         ]
-        for dot, msg, t in events:
-            html += f'<div class="feed-item"><div class="feed-dot {dot}"></div><div class="feed-text">{msg}</div><div class="feed-time">{t}</div></div>'
-        html += panel_close()
-        st.markdown(html, unsafe_allow_html=True)
+        html=po("Live Threat Feed","● LIVE","pb-live")+'<div class="feed">'
+        for dot,msg,t in EVENTS:
+            html+=feed_item(dot,msg,t)
+        html+='</div>'+pc()
+        st.markdown(html,unsafe_allow_html=True)
 
-        # Traffic chart
-        html2 = panel_open("Data Traffic Volume", "LAST 5 MIN", "pb-blue")
-        st.markdown(html2, unsafe_allow_html=True)
-        np.random.seed(7)
-        xs  = np.linspace(0,300,80)
-        pkt = 40 + 30*np.sin(xs/30) + np.random.normal(0,5,80)
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=xs, y=pkt, mode='lines',
-            line=dict(color=BLUE, width=1.5),
-            fill='tozeroy', fillcolor='rgba(30,160,255,0.07)',
-            name='Packets/s'))
-        pl(fig, height=130, margin=dict(l=40,r=10,t=10,b=30),
-           xaxis_title="Seconds ago", yaxis_title="Packets / s")
-        st.plotly_chart(fig, use_container_width=True)
-        st.markdown(panel_close(), unsafe_allow_html=True)
+        # Traffic line chart
+        html2=po("Network Traffic","LAST 5 MIN","pb-purple")
+        st.markdown(html2,unsafe_allow_html=True)
+        np.random.seed(9); xs=np.linspace(0,300,80)
+        pkt=40+30*np.sin(xs/30)+np.random.normal(0,5,80)
+        fig=go.Figure()
+        fig.add_trace(go.Scatter(x=xs,y=pkt,mode='lines',
+            line=dict(color=PURPLE,width=1.5),
+            fill='tozeroy',fillcolor='rgba(180,0,255,0.07)'))
+        fig.add_trace(go.Scatter(x=xs,y=pkt+15,mode='lines',
+            line=dict(color=PINK,width=1,dash='dot'),name='Peak'))
+        pl(fig,height=130,margin=dict(l=40,r=10,t=10,b=30),showlegend=False)
+        st.plotly_chart(fig,use_container_width=True)
+        st.markdown(pc(),unsafe_allow_html=True)
 
-    with col_r:
-        # System health
-        html3 = panel_open("System Health")
-        rows = [
-            ("Sensor Network","Operational","green"),
-            ("Encryption Layer","Active · AES-256-GCM","green"),
-            ("Threat Classifier","Running","green"),
-            ("Fault Monitor","Running","green"),
-            ("Data Integrity","Verified","green"),
-            ("Alert Queue","2 pending","amber"),
-            ("Last Key Rotation","14:18 UTC","blue"),
-            ("Uptime","99.97%","green"),
+    with cr:
+        # System status
+        html3=po("System Status")
+        STATUS=[
+            ("Sensor Array","Online","dv-g"),("Encryption","AES-256-GCM Active","dv-g"),
+            ("Threat AI","Armed","dv-g"),("Fault Monitor","Running","dv-g"),
+            ("Data Integrity","Verified","dv-g"),("Alert Queue","2 Critical","dv-r"),
+            ("Last Key Cycle","14:18 UTC","dv-p"),("Network Uptime","99.97%","dv-g"),
         ]
-        for lbl,val,cls in rows:
-            html3 += drow(lbl,val,cls)
-        html3 += panel_close()
-        st.markdown(html3, unsafe_allow_html=True)
+        html3+=''.join(dr(l,v,c) for l,v,c in STATUS)+pc()
+        st.markdown(html3,unsafe_allow_html=True)
 
-        # Attack breakdown donut
-        html4 = panel_open("Threat Breakdown (Session)")
-        st.markdown(html4, unsafe_allow_html=True)
-        cnts = [312,41,28,19,15,10]
-        lbls = ['Normal','FDI','Replay','DoS','MITM','Timestamp']
-        fig2 = go.Figure(go.Pie(
-            labels=lbls, values=cnts, hole=0.6,
-            marker_colors=[SAFE,THRT,'#ff6680','#ff8844',WARN,'#ffcc44'],
-            textinfo='none',
-        ))
+        # Donut chart
+        html4=po("Threat Breakdown","SESSION","pb-purple")
+        st.markdown(html4,unsafe_allow_html=True)
+        fig2=go.Figure(go.Pie(
+            labels=['Normal','FDI','Replay','DoS','MITM','Timestamp'],
+            values=[312,41,28,19,15,10],hole=0.62,
+            marker_colors=[CYAN,RED,PINK,AMBER,PURPLE,'#ff88cc'],
+            textinfo='none'))
         fig2.add_annotation(text="<b>425</b><br><span style='font-size:9px'>packets</span>",
-                            x=0.5,y=0.5, showarrow=False,
-                            font=dict(color='#c8d8e8',size=13,family='JetBrains Mono'))
-        pl(fig2, height=170, margin=dict(l=0,r=0,t=0,b=0),
-           showlegend=True,
+            x=0.5,y=0.5,showarrow=False,font=dict(color='#e0d0ff',size=14,family='Orbitron'))
+        pl(fig2,height=175,margin=dict(l=0,r=0,t=0,b=0),
            legend=dict(font=dict(size=9),orientation='v',x=1,y=0.5))
-        st.plotly_chart(fig2, use_container_width=True)
-        st.markdown(panel_close(), unsafe_allow_html=True)
+        st.plotly_chart(fig2,use_container_width=True)
+        st.markdown(pc(),unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════
-#  PAGE: PMU NETWORK
+#  PMU NETWORK
 # ══════════════════════════════════════════════
-elif page == "PMU Network":
+elif page=="// PMU NETWORK":
+    k1,k2,k3,k4=st.columns(4)
+    with k1: st.markdown(kpi("Units Online","6/6","Full coverage","cyan"),    unsafe_allow_html=True)
+    with k2: st.markdown(kpi("Parameters","13","Per sensor","purple"),         unsafe_allow_html=True)
+    with k3: st.markdown(kpi("Sample Rate","60 Hz","Synchrophasor","purple"),  unsafe_allow_html=True)
+    with k4: st.markdown(kpi("Load Range","±30%","Scenarios covered","pink"),  unsafe_allow_html=True)
 
-    k1,k2,k3,k4 = st.columns(4)
-    with k1: st.markdown(kpi_html("Units Online","6 / 6","Full coverage","green"), unsafe_allow_html=True)
-    with k2: st.markdown(kpi_html("Parameters","13","Per sensor","blue"), unsafe_allow_html=True)
-    with k3: st.markdown(kpi_html("Sample Rate","60 Hz","Synchrophasor","blue"), unsafe_allow_html=True)
-    with k4: st.markdown(kpi_html("Load Variation","± 30%","Scenarios covered","amber"), unsafe_allow_html=True)
-
-    # Sensor cards
-    buses   = [4,6,1,10,14,8]
-    np.random.seed(int(time.time()) % 100)
-    alerts  = np.random.choice(6, size=2, replace=False)
-    html_g  = '<div class="pmu-grid">'
+    buses=[4,6,1,10,14,8]; np.random.seed(int(time.time())%50)
+    alerts_idx=np.random.choice(6,size=2,replace=False)
+    html_g='<div class="pmugrid">'
     for i,b in enumerate(buses):
-        is_alert = i in alerts
-        vm  = round(1.0 + np.random.uniform(-0.04,0.04), 4)
-        va  = round(np.random.uniform(-18,2), 2)
-        fr  = round(50 + np.random.uniform(-0.03,0.03), 4)
-        roc = round(np.random.uniform(-0.01,0.01), 5)
-        status_cls = "alert" if is_alert else "ok"
-        status_txt = f'<span style="color:#ff3355">ALERT</span>' if is_alert else f'<span style="color:#0ef0a0">SECURE</span>'
-        html_g += f"""
-        <div class="pmu-card {'alert-card' if is_alert else ''}">
-            <div class="pmu-stat {status_cls}"></div>
-            <div class="pmu-id">PMU-{str(i+1).zfill(2)}</div>
-            <div class="pmu-loc">Bus {b}</div>
-            {drow("Vm (p.u.)",   vm)}
-            {drow("Va (°)",       va)}
-            {drow("Freq (Hz)",    fr)}
-            {drow("ROCOF",       roc)}
-            {drow("Status", status_txt)}
+        al=i in alerts_idx
+        vm=round(1.0+np.random.uniform(-.04,.04),4)
+        va=round(np.random.uniform(-18,2),2)
+        fr=round(50+np.random.uniform(-.03,.03),4)
+        rc=round(np.random.uniform(-.01,.01),5)
+        sv=f'<span style="color:#ff003c">ALERT</span>' if al else f'<span style="color:#66ffee">SECURE</span>'
+        html_g+=f"""
+        <div class="pcard {'alert' if al else ''}">
+            <div class="pstat {'pstat-alert' if al else 'pstat-ok'}"></div>
+            <div class="pid">PMU-{str(i+1).zfill(2)}</div>
+            <div class="ploc">Bus {b} · Grid Node</div>
+            {dr("Vm (p.u.)",vm)}{dr("Va (°)",va)}{dr("Freq (Hz)",fr)}{dr("ROCOF",rc)}{dr("Status",sv)}
         </div>"""
-    html_g += '</div>'
-    st.markdown(html_g, unsafe_allow_html=True)
+    html_g+='</div>'
+    st.markdown(html_g,unsafe_allow_html=True)
 
-    # Charts
-    bus_filter = st.multiselect("Filter sensors:", options=sorted(df_pmu['bus_id'].unique()),
-        default=sorted(df_pmu['bus_id'].unique()), format_func=lambda x: f"Bus {x+1}")
-    df_f = df_pmu[df_pmu['bus_id'].isin(bus_filter)] if bus_filter else df_pmu
+    bf=st.multiselect("Filter sensors:",options=sorted(df_pmu['bus_id'].unique()),
+        default=sorted(df_pmu['bus_id'].unique()),format_func=lambda x:f"Bus {x+1}")
+    dff=df_pmu[df_pmu['bus_id'].isin(bf)] if bf else df_pmu
 
-    def lc(y, title, ylab):
-        fig = px.line(df_f, x='timestamp', y=y, color='bus_id',
-                      color_discrete_sequence=SEQ,
-                      labels={'timestamp':'Time (s)', y:ylab, 'bus_id':'Sensor'})
+    def lc(y,ylab):
+        fig=px.line(dff,x='timestamp',y=y,color='bus_id',color_discrete_sequence=SEQ,
+            labels={'timestamp':'Time (s)',y:ylab,'bus_id':'Sensor'})
         fig.update_traces(line=dict(width=1.4))
-        pl(fig, height=185, title=dict(text=title, font=dict(size=11,color='#4a6a8f'), x=0.01, y=0.97))
+        pl(fig,height=185)
         return fig
 
-    c1,c2 = st.columns(2)
+    c1,c2=st.columns(2)
     with c1:
-        st.markdown(panel_open("Voltage Magnitude"), unsafe_allow_html=True)
-        st.plotly_chart(lc('vm_pu','','Vm (p.u.)'), use_container_width=True)
-        st.markdown(panel_close(), unsafe_allow_html=True)
+        st.markdown(po("Voltage Magnitude"),unsafe_allow_html=True)
+        st.plotly_chart(lc('vm_pu','Vm (p.u.)'),use_container_width=True)
+        st.markdown(pc(),unsafe_allow_html=True)
     with c2:
-        st.markdown(panel_open("Voltage Angle"), unsafe_allow_html=True)
-        st.plotly_chart(lc('va_degree','','Va (°)'), use_container_width=True)
-        st.markdown(panel_close(), unsafe_allow_html=True)
-
-    c3,c4 = st.columns(2)
+        st.markdown(po("Voltage Angle"),unsafe_allow_html=True)
+        st.plotly_chart(lc('va_degree','Va (°)'),use_container_width=True)
+        st.markdown(pc(),unsafe_allow_html=True)
+    c3,c4=st.columns(2)
     with c3:
-        st.markdown(panel_open("Frequency"), unsafe_allow_html=True)
-        st.plotly_chart(lc('frequency','','Freq (Hz)'), use_container_width=True)
-        st.markdown(panel_close(), unsafe_allow_html=True)
+        st.markdown(po("Frequency"),unsafe_allow_html=True)
+        st.plotly_chart(lc('frequency','Freq (Hz)'),use_container_width=True)
+        st.markdown(pc(),unsafe_allow_html=True)
     with c4:
-        st.markdown(panel_open("ROCOF"), unsafe_allow_html=True)
-        st.plotly_chart(lc('rocof','','ROCOF (Hz/s)'), use_container_width=True)
-        st.markdown(panel_close(), unsafe_allow_html=True)
+        st.markdown(po("ROCOF"),unsafe_allow_html=True)
+        st.plotly_chart(lc('rocof','ROCOF (Hz/s)'),use_container_width=True)
+        st.markdown(pc(),unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════
-#  PAGE: SECURE COMMS
+#  SECURE COMMS
 # ══════════════════════════════════════════════
-elif page == "Secure Comms":
+elif page=="// SECURE COMMS":
+    k1,k2,k3,k4=st.columns(4)
+    with k1: st.markdown(kpi("Cipher","AES-256","GCM Mode","purple"),        unsafe_allow_html=True)
+    with k2: st.markdown(kpi("Encrypt","0.052ms","Per packet","cyan"),        unsafe_allow_html=True)
+    with k3: st.markdown(kpi("Decrypt","0.026ms","Per packet","cyan"),        unsafe_allow_html=True)
+    with k4: st.markdown(kpi("Tamper Block","100%","Zero bypass","pink"),     unsafe_allow_html=True)
 
-    k1,k2,k3,k4 = st.columns(4)
-    with k1: st.markdown(kpi_html("Encryption","AES-256-GCM","Authenticated","green"), unsafe_allow_html=True)
-    with k2: st.markdown(kpi_html("Encrypt Time","0.052 ms","Per packet","blue"), unsafe_allow_html=True)
-    with k3: st.markdown(kpi_html("Decrypt Time","0.026 ms","Per packet","blue"), unsafe_allow_html=True)
-    with k4: st.markdown(kpi_html("Tamper Detection","100%","Zero bypass","green"), unsafe_allow_html=True)
+    cl,cr=st.columns([1,1])
+    with cl:
+        st.markdown(po("Transmit Packet"),unsafe_allow_html=True)
+        sensor=st.selectbox("Source sensor:",[f"PMU-{str(i+1).zfill(2)} · Bus {b}" for i,b in enumerate([4,6,1,10,14,8])])
+        vm_v=st.slider("Voltage Magnitude (p.u.)",0.95,1.10,1.05,0.001)
+        va_v=st.slider("Voltage Angle (°)",-25.0,0.0,-10.0,0.1)
+        fq_v=st.slider("Frequency (Hz)",49.90,50.10,50.00,0.001)
+        send=st.button("Encrypt & Transmit",use_container_width=True)
+        st.markdown(pc(),unsafe_allow_html=True)
 
-    col_l, col_r = st.columns([1,1])
+        st.markdown(po("Protocol Matrix"),unsafe_allow_html=True)
+        for l,v,c in [("Cipher","AES-256-GCM","dv-p"),("Key","256-bit","dv-p"),
+                      ("Nonce","96-bit random","dv-p"),("Auth tag","128-bit GCM","dv-p"),
+                      ("Frame","C37.118-style","dv-w"),("Access","4 role levels","dv-w"),
+                      ("Tamper","Drop + alert","dv-r")]:
+            st.markdown(dr(l,v,c),unsafe_allow_html=True)
+        st.markdown(pc(),unsafe_allow_html=True)
 
-    with col_l:
-        st.markdown(panel_open("Send Encrypted Packet"), unsafe_allow_html=True)
-        sensor   = st.selectbox("Sensor:", [f"PMU-0{i+1} · Bus {b}" for i,b in enumerate([4,6,1,10,14,8])])
-        vm_val   = st.slider("Voltage Magnitude (p.u.)", 0.95, 1.10, 1.05, 0.001)
-        va_val   = st.slider("Voltage Angle (°)", -25.0, 0.0, -10.0, 0.1)
-        freq_val = st.slider("Frequency (Hz)", 49.90, 50.10, 50.00, 0.001)
-        send_btn = st.button("Encrypt & Transmit", use_container_width=True)
-        st.markdown(panel_close(), unsafe_allow_html=True)
-
-        # Protocol specs
-        st.markdown(panel_open("Protocol"), unsafe_allow_html=True)
-        specs = [("Cipher","AES-256-GCM"),("Key size","256-bit"),
-                 ("Nonce","96-bit random"),("Auth tag","128-bit"),
-                 ("Frame format","C37.118-style"),("Access control","4 role levels"),
-                 ("Tamper action","Drop + alert")]
-        for l,v in specs:
-            st.markdown(drow(l,v,'blue'), unsafe_allow_html=True)
-        st.markdown(panel_close(), unsafe_allow_html=True)
-
-    with col_r:
-        st.markdown(panel_open("Transmission Log","● LIVE","pb-green"), unsafe_allow_html=True)
-        if send_btn:
-            bus_id = int(sensor.split("Bus ")[-1])
-            packet = {"sensor": sensor, "bus_id": bus_id,
-                      "vm_pu": vm_val, "va_degree": va_val,
-                      "frequency": freq_val, "rocof": 0.001,
-                      "ts": time.time()}
-            key    = os.urandom(32)
-            aesgcm = AESGCM(key)
-            nonce  = os.urandom(12)
-            plain  = json.dumps(packet).encode()
-
-            t0=time.perf_counter(); ct=aesgcm.encrypt(nonce,plain,None); enc_ms=(time.perf_counter()-t0)*1e3
-            t0=time.perf_counter(); dec=aesgcm.decrypt(nonce,ct,None);   dec_ms=(time.perf_counter()-t0)*1e3
-
-            st.success(f"✓ Packet encrypted in {enc_ms:.4f} ms — transmitted to central PDC")
-
-            st.markdown(f'<div class="mono-block"><span style="color:#4a6a8f">// ciphertext (hex)</span><br>{ct.hex()[:120]}...</div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="mono-block"><span style="color:#4a6a8f">// decrypted payload</span><br>{json.dumps(json.loads(dec),indent=2)}</div>', unsafe_allow_html=True)
-
-            # Tamper test
-            tampered = bytes([ct[0]^0xFF])+ct[1:]
+    with cr:
+        st.markdown(po("Transmission Log","● ENCRYPTING","pb-live"),unsafe_allow_html=True)
+        if send:
+            bid=int(sensor.split("Bus ")[-1])
+            pkt={"sensor":sensor,"bus_id":bid,"vm_pu":vm_v,"va_degree":va_v,
+                 "frequency":fq_v,"rocof":0.001,"ts":time.time()}
+            key=os.urandom(32); aesgcm=AESGCM(key); nonce=os.urandom(12)
+            plain=json.dumps(pkt).encode()
+            t0=time.perf_counter(); ct=aesgcm.encrypt(nonce,plain,None); enc=(time.perf_counter()-t0)*1e3
+            t0=time.perf_counter(); dec=aesgcm.decrypt(nonce,ct,None);   dct=(time.perf_counter()-t0)*1e3
+            st.success(f"✓ Encrypted in {enc:.4f} ms — authenticated — dispatched to central node")
+            st.markdown(f'<div class="monoblock"><span style="color:#4a2a7a">// ciphertext (hex)</span><br>{ct.hex()[:128]}...</div>',unsafe_allow_html=True)
+            st.markdown(f'<div class="monoblock"><span style="color:#4a2a7a">// decrypted payload</span><br>{json.dumps(json.loads(dec),indent=2)}</div>',unsafe_allow_html=True)
+            tampered=bytes([ct[0]^0xFF])+ct[1:]
             try:
-                aesgcm.decrypt(nonce,tampered,None)
-                st.error("Tamper check failed.")
-            except Exception:
-                st.success("✓ Tamper test passed — modified packet rejected by authentication tag")
-
-            # Mini latency chart
-            runs = [round(np.random.uniform(0.044,0.062),4) for _ in range(30)]
-            runs[-1] = enc_ms
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(y=runs, mode='lines+markers',
-                line=dict(color=SAFE,width=1.2),
-                marker=dict(size=3,color=SAFE),
-                name='Encrypt ms'))
-            fig.add_hline(y=np.mean(runs),line_dash='dash',line_color=WARN,
-                          annotation_text=f"avg {np.mean(runs):.3f}ms",
-                          annotation_font=dict(color=WARN,size=9))
-            pl(fig, height=120, yaxis_title='ms', xaxis_title='Packet #',
-               margin=dict(l=44,r=10,t=10,b=30), showlegend=False)
-            st.plotly_chart(fig, use_container_width=True)
+                aesgcm.decrypt(nonce,tampered,None); st.error("Tamper check failed.")
+            except:
+                st.success("✓ Tamper test — modified packet rejected by authentication tag")
+            runs=[round(np.random.uniform(.044,.062),4) for _ in range(30)]; runs[-1]=enc
+            fig=go.Figure()
+            fig.add_trace(go.Scatter(y=runs,mode='lines+markers',
+                line=dict(color=PINK,width=1.3),marker=dict(size=3,color=PINK),showlegend=False))
+            fig.add_hline(y=float(np.mean(runs)),line_dash='dash',line_color=AMBER,
+                annotation_text=f"avg {np.mean(runs):.3f}ms",annotation_font=dict(color=AMBER,size=9))
+            pl(fig,height=110,margin=dict(l=44,r=10,t=10,b=30))
+            st.plotly_chart(fig,use_container_width=True)
         else:
-            st.markdown('<div class="empty-state">Configure a packet on the left and click<br>Encrypt &amp; Transmit to see the output.</div>', unsafe_allow_html=True)
-        st.markdown(panel_close(), unsafe_allow_html=True)
+            st.markdown('<div class="empty">Configure a packet on the left<br>and click Encrypt &amp; Transmit.</div>',unsafe_allow_html=True)
+        st.markdown(pc(),unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════
-#  PAGE: THREAT DETECTION
+#  THREAT INTEL
 # ══════════════════════════════════════════════
-elif page == "Threat Detection":
+elif page=="// THREAT INTEL":
+    k1,k2,k3,k4=st.columns(4)
+    with k1: st.markdown(kpi("Classifier","RF","6-class detection","purple"),  unsafe_allow_html=True)
+    with k2: st.markdown(kpi("Accuracy","89.4%","Validated","cyan"),           unsafe_allow_html=True)
+    with k3: st.markdown(kpi("F1-Score","89.6%","Weighted avg","cyan"),        unsafe_allow_html=True)
+    with k4: st.markdown(kpi("Latency","<1ms","Per prediction","pink"),        unsafe_allow_html=True)
 
-    k1,k2,k3,k4 = st.columns(4)
-    with k1: st.markdown(kpi_html("Classifier","Random Forest","6-class detection","blue"), unsafe_allow_html=True)
-    with k2: st.markdown(kpi_html("Accuracy","89.4%","Validated","green"), unsafe_allow_html=True)
-    with k3: st.markdown(kpi_html("F1-Score","89.6%","Weighted avg","green"), unsafe_allow_html=True)
-    with k4: st.markdown(kpi_html("Latency","< 1 ms","Per prediction","blue"), unsafe_allow_html=True)
+    cl,cr=st.columns([1,1])
+    with cl:
+        st.markdown(po("Sensor Input"),unsafe_allow_html=True)
+        vm   =st.slider("Voltage Magnitude (p.u.)",0.0,1.2,1.05,0.01)
+        va   =st.slider("Voltage Angle (°)",-30.0,5.0,-10.0,0.5)
+        freq =st.slider("Frequency (Hz)",49.0,51.0,50.0,0.01)
+        p_mw =st.slider("Active Power (MW)",0.0,100.0,50.0,1.0)
+        rocof=st.slider("ROCOF (Hz/s)",-1.0,1.0,0.0,0.01)
+        ts   =st.slider("Timestamp offset (s)",0.0,200.0,1.0,0.5)
+        run  =st.button("Run Classification",use_container_width=True)
+        st.markdown(pc(),unsafe_allow_html=True)
 
-    col_l, col_r = st.columns([1,1])
-
-    with col_l:
-        st.markdown(panel_open("Input Readings"), unsafe_allow_html=True)
-        vm    = st.slider("Voltage Magnitude (p.u.)", 0.0, 1.2, 1.05, 0.01)
-        va    = st.slider("Voltage Angle (°)", -30.0, 5.0, -10.0, 0.5)
-        freq  = st.slider("Frequency (Hz)", 49.0, 51.0, 50.0, 0.01)
-        p_mw  = st.slider("Active Power (MW)", 0.0, 100.0, 50.0, 1.0)
-        q_mvar= st.slider("Reactive Power (MVAR)", 0.0, 50.0, 20.0, 1.0)
-        rocof = st.slider("ROCOF (Hz/s)", -1.0, 1.0, 0.0, 0.01)
-        ts    = st.slider("Timestamp offset (s)", 0.0, 200.0, 1.0, 0.5)
-        run_btn = st.button("Run Classification", use_container_width=True)
-        st.markdown(panel_close(), unsafe_allow_html=True)
-
-    with col_r:
-        st.markdown(panel_open("Classification Result","RF MODEL","pb-blue"), unsafe_allow_html=True)
-        if run_btn:
-            if vm == 0.0 or freq < 49.2:
-                cls,conf,sev,action = "Denial of Service",94,"threat","Packet dropped. Rate limiter active. Admin alerted."
-            elif abs(vm-1.05) > 0.08:
-                cls,conf,sev,action = "False Data Injection",87,"threat","Data flagged. Sensor quarantined pending review."
-            elif ts > 50:
-                cls,conf,sev,action = "Timestamp Manipulation",96,"threat","GPS sync mismatch. Packet invalidated."
-            elif abs(va+10) > 10:
-                cls,conf,sev,action = "Man-in-the-Middle",82,"threat","Channel integrity breach. Rekeying initiated."
-            elif abs(rocof) > 0.3:
-                cls,conf,sev,action = "Replay Attack",88,"threat","Duplicate sequence detected. Packet dropped."
+    with cr:
+        st.markdown(po("Classification","RF MODEL","pb-purple"),unsafe_allow_html=True)
+        if run:
+            if vm==0.0 or freq<49.2:
+                cls,conf,sev,action="Denial of Service",94,"threat","Rate limiter active. Admin alerted."
+            elif abs(vm-1.05)>0.08:
+                cls,conf,sev,action="False Data Injection",87,"threat","Sensor quarantined pending review."
+            elif ts>50:
+                cls,conf,sev,action="Timestamp Manipulation",96,"threat","GPS sync mismatch. Packet invalidated."
+            elif abs(va+10)>10:
+                cls,conf,sev,action="Man-in-the-Middle",82,"threat","Channel breach. Rekeying initiated."
+            elif abs(rocof)>0.3:
+                cls,conf,sev,action="Replay Attack",88,"threat","Duplicate sequence dropped."
             else:
-                cls,conf,sev,action = "Normal",91,"safe","No anomaly detected. Data forwarded to fault classifier."
+                cls,conf,sev,action="Normal",91,"safe","No anomaly. Forwarded to fault classifier."
 
-            box_cls = "result-threat" if sev=="threat" else "result-safe"
-            title_color = THRT if sev=="threat" else SAFE
-            icon = "⚠" if sev=="threat" else "✓"
+            is_t=sev=="threat"
+            bc="rbox-threat" if is_t else "rbox-safe"
+            tc=RED if is_t else CYAN
+            icon="⚠" if is_t else "✓"
             st.markdown(f"""
-            <div class="result-box {box_cls}">
-                <div class="result-title" style="color:{title_color};">{icon} &nbsp;{cls}</div>
-                <div class="result-meta">
-                    Confidence: <span style="color:{title_color};font-family:'JetBrains Mono',monospace;">{conf}%</span>
+            <div class="rbox {bc}">
+                <div class="rtitle" style="color:{tc};">{icon} &nbsp;{cls}</div>
+                <div class="rmeta">
+                    Confidence: <span style="font-family:'Share Tech Mono',monospace;color:{tc};">{conf}%</span>
                     &nbsp;·&nbsp; {action}
                 </div>
-            </div>""", unsafe_allow_html=True)
+            </div>""",unsafe_allow_html=True)
 
             # Confidence bars
-            confs = {'Normal':91,'FDI':3,'Replay':2,'DoS':1,'MITM':2,'Timestamp':1}
-            if sev=="threat":
+            confs={'Normal':91,'FDI':3,'Replay':2,'DoS':1,'MITM':2,'Timestamp':1}
+            if is_t:
                 for k in confs: confs[k]=2
-                short = cls.split("(")[0].strip().split()[-1]
-                key_map = {"Service":"DoS","Injection":"FDI","Manipulation":"Timestamp","Middle":"MITM","Attack":"Replay"}
-                matched = next((v for k,v in key_map.items() if k in cls),None)
-                if matched and matched in confs: confs[matched]=conf
-                elif cls=="Normal": confs['Normal']=conf
-
-            st.markdown("<br>", unsafe_allow_html=True)
+                km={"Service":"DoS","Injection":"FDI","Manipulation":"Timestamp","Middle":"MITM","Attack":"Replay"}
+                matched=next((v for k,v in km.items() if k in cls),None)
+                if matched: confs[matched]=conf
+            st.markdown("<br>",unsafe_allow_html=True)
             for lbl,v in confs.items():
-                color = SAFE if lbl=='Normal' else THRT
+                col=CYAN if lbl=='Normal' else RED
                 st.markdown(f"""
-                <div class="conf-row">
-                    <div class="conf-top"><span class="conf-lbl">{lbl}</span><span class="conf-val">{v}%</span></div>
-                    <div class="conf-bg"><div class="conf-fill" style="width:{v}%;background:{color};"></div></div>
-                </div>""", unsafe_allow_html=True)
+                <div class="cbar">
+                    <div class="ctop"><span class="clbl">{lbl}</span><span class="cval">{v}%</span></div>
+                    <div class="cbg"><div class="cfill" style="width:{v}%;background:{col};box-shadow:0 0 8px {col};"></div></div>
+                </div>""",unsafe_allow_html=True)
         else:
-            st.markdown('<div class="empty-state">Adjust sensor readings on the left<br>and click Run Classification.</div>', unsafe_allow_html=True)
-        st.markdown(panel_close(), unsafe_allow_html=True)
+            st.markdown('<div class="empty">Adjust sensor readings on the left<br>and click Run Classification.</div>',unsafe_allow_html=True)
+        st.markdown(pc(),unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════
-#  PAGE: ANALYTICS
+#  ANALYTICS
 # ══════════════════════════════════════════════
-elif page == "Analytics":
+elif page=="// ANALYTICS":
+    k1,k2,k3,k4=st.columns(4)
+    with k1: st.markdown(kpi("Best Accuracy","99.1%","CNN fault classifier","cyan"),  unsafe_allow_html=True)
+    with k2: st.markdown(kpi("RF Accuracy","89.4%","Above benchmark","purple"),       unsafe_allow_html=True)
+    with k3: st.markdown(kpi("Training Set","25K","Labelled samples","pink"),          unsafe_allow_html=True)
+    with k4: st.markdown(kpi("Active Models","2","RF + CNN deployed","purple"),        unsafe_allow_html=True)
 
-    k1,k2,k3,k4 = st.columns(4)
-    with k1: st.markdown(kpi_html("Best Accuracy","99.1%","CNN fault classifier","green"), unsafe_allow_html=True)
-    with k2: st.markdown(kpi_html("RF Accuracy","89.4%","Above industry benchmark","green"), unsafe_allow_html=True)
-    with k3: st.markdown(kpi_html("Training Set","25K","Labelled samples","blue"), unsafe_allow_html=True)
-    with k4: st.markdown(kpi_html("Models Active","2","RF + CNN deployed","blue"), unsafe_allow_html=True)
+    cl,cr=st.columns([3,2])
+    with cl:
+        st.markdown(po("Model Accuracy Matrix"),unsafe_allow_html=True)
+        models=['Random Forest','LSTM','1D-CNN']; acc=[89.43,54.85,99.05]; f1s=[89.60,53.38,99.05]
+        mcols=[CYAN,AMBER,PURPLE]
+        fig=go.Figure()
+        for m,a,f,c in zip(models,acc,f1s,mcols):
+            fig.add_trace(go.Bar(name=f'{m}',x=[m],y=[a],marker_color=c,marker_opacity=0.8,
+                text=f'{a}%',textposition='outside',
+                textfont=dict(size=10,color='#e0d0ff',family='Share Tech Mono')))
+        fig.add_hline(y=88.7,line_dash='dash',line_color=RED,line_width=1,
+            annotation_text='Baseline 88.7%',annotation_font=dict(color=RED,size=9))
+        pl(fig,height=240,barmode='group',yaxis_range=[0,115],
+           legend=dict(font=dict(size=10),bgcolor='rgba(0,0,0,0)',orientation='h',y=1.1))
+        st.plotly_chart(fig,use_container_width=True)
+        st.markdown(pc(),unsafe_allow_html=True)
 
-    col_l, col_r = st.columns([3,2])
+    with cr:
+        st.markdown(po("Performance Ledger"),unsafe_allow_html=True)
+        for l,v,c in [("Random Forest","89.43% acc","dv-g"),("LSTM","54.85% acc","dv-a"),
+                      ("1D-CNN","99.05% acc","dv-g"),("Industry Baseline","88.70%","dv-p"),
+                      ("RF vs Baseline","+0.73% ↑","dv-g"),("Attack Classes","6 types","dv-p"),
+                      ("Fault Classes","5 types","dv-p")]:
+            st.markdown(dr(l,v,c),unsafe_allow_html=True)
+        st.markdown(pc(),unsafe_allow_html=True)
 
-    with col_l:
-        st.markdown(panel_open("Model Accuracy"), unsafe_allow_html=True)
-        models = ['Random Forest','LSTM','1D-CNN']
-        acc    = [89.43, 54.85, 99.05]
-        f1s    = [89.60, 53.38, 99.05]
-        colors_m=[SAFE, WARN, BLUE]
-        fig = go.Figure()
-        for m,a,f,c in zip(models,acc,f1s,colors_m):
-            fig.add_trace(go.Bar(name=f'{m} Acc', x=[m], y=[a],
-                marker_color=c, marker_opacity=0.75,
-                text=f'{a}%', textposition='outside',
-                textfont=dict(size=10,color='#c8d8e8',family='JetBrains Mono')))
-            fig.add_trace(go.Bar(name=f'{m} F1', x=[m], y=[f],
-                marker_color=c, marker_opacity=0.35,
-                text=f'{f}%', textposition='outside',
-                textfont=dict(size=10,color='#4a6a8f',family='JetBrains Mono')))
-        fig.add_hline(y=88.7, line_dash='dash', line_color=THRT, line_width=1,
-                      annotation_text='Industry baseline 88.7%',
-                      annotation_font=dict(color=THRT,size=9))
-        pl(fig, height=250, barmode='group', yaxis_range=[0,115],
-           legend=dict(font=dict(size=9),bgcolor='rgba(0,0,0,0)',orientation='h',y=1.08))
-        st.plotly_chart(fig, use_container_width=True)
-        st.markdown(panel_close(), unsafe_allow_html=True)
+        st.markdown(po("Detected Threats","6 CLASS","pb-red"),unsafe_allow_html=True)
+        for cls,dot in [("Normal","fdot-low"),("False Data Injection","fdot-crit"),
+                        ("Replay Attack","fdot-high"),("Denial of Service","fdot-crit"),
+                        ("Man-in-the-Middle","fdot-high"),("Timestamp Manip.","fdot-med")]:
+            st.markdown(feed_item(dot,cls,"—"),unsafe_allow_html=True)
+        st.markdown(pc(),unsafe_allow_html=True)
 
-    with col_r:
-        st.markdown(panel_open("Performance Summary"), unsafe_allow_html=True)
-        perf = [
-            ("Random Forest","89.43% acc","green"),
-            ("LSTM","54.85% acc","amber"),
-            ("1D-CNN","99.05% acc","green"),
-            ("Industry Baseline","88.70% acc","blue"),
-            ("RF vs Baseline","+0.73% ↑","green"),
-            ("Attack Classes","6 detected","blue"),
-            ("Fault Classes","5 detected","blue"),
-        ]
-        for l,v,c in perf:
-            st.markdown(drow(l,v,c), unsafe_allow_html=True)
-        st.markdown(panel_close(), unsafe_allow_html=True)
-
-        st.markdown(panel_open("Detected Threats"), unsafe_allow_html=True)
-        for cls in ['Normal','False Data Injection','Replay Attack','Denial of Service','Man-in-the-Middle','Timestamp Manipulation']:
-            color = SAFE if cls=='Normal' else THRT
-            st.markdown(f'<div class="feed-item"><div class="feed-dot {"green" if cls=="Normal" else "red"}"></div><div class="feed-text" style="font-size:10px;">{cls}</div></div>', unsafe_allow_html=True)
-        st.markdown(panel_close(), unsafe_allow_html=True)
-
-    # Confusion matrices
     st.markdown("---")
-    tab1,tab2,tab3 = st.tabs(["Random Forest  89.4%","LSTM  54.9%","1D-CNN  99.1%"])
-    L6 = ['Normal','FDI','Replay','DoS','MITM','Timestamp']
-    L5 = ['Normal','Zone1','Zone2','Zone3','PwrSwing']
-    cm_rf   = np.array([[478,2,0,8,6,6],[3,467,2,8,8,12],[0,1,499,0,0,0],[6,9,0,475,6,4],[8,7,0,5,472,8],[3,6,0,3,3,485]])
-    cm_lstm = np.array([[18,60,60,120,100,84],[20,170,60,80,60,36],[0,0,416,0,0,0],[30,60,10,142,90,140],[40,50,10,80,88,151],[0,0,0,8,0,807]])
-    cm_cnn  = np.array([[398,0,0,2,0],[0,398,0,2,0],[0,0,400,0,0],[2,2,0,396,0],[0,0,0,0,400]])
+    tab1,tab2,tab3=st.tabs(["Random Forest  89.4%","LSTM  54.9%","1D-CNN  99.1%"])
+    L6=['Normal','FDI','Replay','DoS','MITM','Timestamp']
+    L5=['Normal','Zone1','Zone2','Zone3','PwrSwing']
+    cm_rf  =np.array([[478,2,0,8,6,6],[3,467,2,8,8,12],[0,1,499,0,0,0],[6,9,0,475,6,4],[8,7,0,5,472,8],[3,6,0,3,3,485]])
+    cm_lstm=np.array([[18,60,60,120,100,84],[20,170,60,80,60,36],[0,0,416,0,0,0],[30,60,10,142,90,140],[40,50,10,80,88,151],[0,0,0,8,0,807]])
+    cm_cnn =np.array([[398,0,0,2,0],[0,398,0,2,0],[0,0,400,0,0],[2,2,0,396,0],[0,0,0,0,400]])
+
     with tab1:
         c1,c2=st.columns([2,1])
-        with c1: st.pyplot(cm_fig(cm_rf,L6,'Blues','Random Forest — Attack Detection'))
+        with c1: st.pyplot(cm_fig(cm_rf,L6,"Random Forest — Attack Detection"))
         with c2:
-            st.success("✓ Accuracy: 89.43%")
-            st.success("✓ F1-Score: 89.60%")
-            st.info("Best performing model for attack detection")
+            st.success("✓ Accuracy: 89.43%"); st.success("✓ F1-Score: 89.60%")
+            st.info("Primary attack detection model")
     with tab2:
         c1,c2=st.columns([2,1])
-        with c1: st.pyplot(cm_fig(cm_lstm,L6,'Greens','LSTM — Attack Detection'))
+        with c1: st.pyplot(cm_fig(cm_lstm,L6,"LSTM — Attack Detection"))
         with c2:
-            st.warning("Accuracy: 54.85%")
-            st.warning("F1-Score: 53.38%")
-            st.info("Performs better with streaming data input")
+            st.warning("Accuracy: 54.85%"); st.warning("F1: 53.38%")
+            st.info("Optimised for streaming input")
     with tab3:
         c1,c2=st.columns([2,1])
-        with c1: st.pyplot(cm_fig(cm_cnn,L5,'YlOrBr','1D-CNN — Fault Classification'))
+        with c1: st.pyplot(cm_fig(cm_cnn,L5,"1D-CNN — Fault Classification"))
         with c2:
-            st.success("✓ Accuracy: 99.05%")
-            st.success("✓ F1-Score: 99.05%")
-            st.info("Near-perfect fault zone separation")
+            st.success("✓ Accuracy: 99.05%"); st.success("✓ F1: 99.05%")
+            st.info("Near-perfect fault separation")
 
 
 # ══════════════════════════════════════════════
-#  PAGE: FAULT MONITOR
+#  FAULT MONITOR
 # ══════════════════════════════════════════════
-elif page == "Fault Monitor":
+elif page=="// FAULT MONITOR":
+    k1,k2,k3,k4=st.columns(4)
+    with k1: st.markdown(kpi("Classifier","CNN","5-class detection","purple"),  unsafe_allow_html=True)
+    with k2: st.markdown(kpi("Accuracy","99.1%","All fault zones","cyan"),      unsafe_allow_html=True)
+    with k3: st.markdown(kpi("Response","<0.1s","Per classification","cyan"),   unsafe_allow_html=True)
+    with k4: st.markdown(kpi("Zones","5","Zone 1-3 + Swing","pink"),            unsafe_allow_html=True)
 
-    k1,k2,k3,k4 = st.columns(4)
-    with k1: st.markdown(kpi_html("Classifier","1D-CNN","5-class fault detection","blue"), unsafe_allow_html=True)
-    with k2: st.markdown(kpi_html("Accuracy","99.1%","All fault zones","green"), unsafe_allow_html=True)
-    with k3: st.markdown(kpi_html("Response","< 0.1 s","Per classification","green"), unsafe_allow_html=True)
-    with k4: st.markdown(kpi_html("Fault Types","5","Zone 1/2/3 + Swing","amber"), unsafe_allow_html=True)
+    cl,cr=st.columns([1,1])
+    with cl:
+        st.markdown(po("Sensor Readings"),unsafe_allow_html=True)
+        vm_f   =st.slider("Voltage Magnitude (p.u.)",0.5,1.2,1.05,0.01)
+        va_f   =st.slider("Voltage Angle (°)",-30.0,15.0,-10.0,0.5)
+        freq_f =st.slider("Frequency (Hz)",49.0,51.0,50.0,0.01)
+        p_f    =st.slider("Active Power (MW)",0.0,150.0,50.0,1.0)
+        rocof_f=st.slider("ROCOF (Hz/s)",-2.0,2.0,0.0,0.01)
+        classify=st.button("Classify Condition",use_container_width=True)
+        st.markdown(pc(),unsafe_allow_html=True)
 
-    col_l, col_r = st.columns([1,1])
-
-    with col_l:
-        st.markdown(panel_open("Sensor Readings"), unsafe_allow_html=True)
-        vm_f    = st.slider("Voltage Magnitude (p.u.)", 0.5, 1.2, 1.05, 0.01)
-        va_f    = st.slider("Voltage Angle (°)", -30.0, 15.0, -10.0, 0.5)
-        freq_f  = st.slider("Frequency (Hz)", 49.0, 51.0, 50.0, 0.01)
-        p_f     = st.slider("Active Power (MW)", 0.0, 150.0, 50.0, 1.0)
-        q_f     = st.slider("Reactive Power (MVAR)", -20.0, 60.0, 20.0, 1.0)
-        rocof_f = st.slider("ROCOF (Hz/s)", -2.0, 2.0, 0.0, 0.01)
-        classify_btn = st.button("Classify Condition", use_container_width=True)
-        st.markdown(panel_close(), unsafe_allow_html=True)
-
-    with col_r:
-        st.markdown(panel_open("Fault Classification Result","CNN","pb-blue"), unsafe_allow_html=True)
-        if classify_btn:
-            drop = 1.05 - vm_f
-            va_sh= abs(va_f+10)
-
-            if drop > 0.25:
-                zone,color,sev,relay,desc = "Zone 1 Fault",THRT,"threat","Immediate trip","Severe fault near relay — protection activated"
-            elif drop > 0.15:
-                zone,color,sev,relay,desc = "Zone 2 Fault","#ff6640","threat","Trip after 0.3 s","Moderate fault — Zone 2 protection initiated"
-            elif drop > 0.08 or va_sh > 10:
-                zone,color,sev,relay,desc = "Zone 3 Fault",WARN,"warn","Trip after 1.0 s","Distant fault — backup protection initiated"
-            elif abs(rocof_f) > 0.5:
-                zone,color,sev,relay,desc = "Power Swing","#aa55ff","warn","Relay blocked","Power oscillation — blocking relay operation"
+    with cr:
+        st.markdown(po("Fault Classification","CNN","pb-purple"),unsafe_allow_html=True)
+        if classify:
+            drop=1.05-vm_f; va_sh=abs(va_f+10)
+            if drop>0.25:
+                zone,col,sev,relay,desc="Zone 1 Fault",RED,"threat","Immediate trip","Severe fault near relay — protection activated"
+            elif drop>0.15:
+                zone,col,sev,relay,desc="Zone 2 Fault","#ff6640","threat","Trip after 0.3s","Moderate fault — Zone 2 protection initiated"
+            elif drop>0.08 or va_sh>10:
+                zone,col,sev,relay,desc="Zone 3 Fault",AMBER,"warn","Trip after 1.0s","Distant fault — backup protection initiated"
+            elif abs(rocof_f)>0.5:
+                zone,col,sev,relay,desc="Power Swing",PURPLE,"warn","Relay blocked","Power oscillation — blocking relay operation"
             else:
-                zone,color,sev,relay,desc = "Normal Operation",SAFE,"safe","No action","System within normal operating parameters"
-
-            box_cls = "result-threat" if sev=="threat" else "result-warn" if sev=="warn" else "result-safe"
-            icon    = "⚠" if sev in ("threat","warn") else "✓"
+                zone,col,sev,relay,desc="Normal Operation",CYAN,"safe","No action","System within normal operating parameters"
+            bc="rbox-threat" if sev=="threat" else "rbox-warn" if sev=="warn" else "rbox-safe"
+            icon="⚠" if sev in ("threat","warn") else "✓"
             st.markdown(f"""
-            <div class="result-box {box_cls}">
-                <div class="result-title" style="color:{color};">{icon} &nbsp;{zone}</div>
-                <div class="result-meta">
-                    {desc}<br>
-                    Relay action: <span style="color:{color};font-family:'JetBrains Mono',monospace;">{relay}</span>
-                </div>
-            </div>""", unsafe_allow_html=True)
-
-            # Zone probability bars
-            zones   = ['Normal','Zone 1','Zone 2','Zone 3','Power Swing']
-            z_idx   = zones.index(zone.replace(" Fault","").replace(" Operation",""))
-            z_vals  = [3,3,3,3,3]; z_vals[z_idx]=92
-            z_colors= [SAFE,THRT,'#ff6640',WARN,'#aa55ff']
-            fig = go.Figure(go.Bar(
-                x=zones, y=z_vals,
-                marker_color=z_colors, marker_opacity=0.75,
-                text=[f'{v}%' for v in z_vals],
-                textposition='outside',
-                textfont=dict(size=10,color='#c8d8e8',family='JetBrains Mono')
-            ))
-            pl(fig, height=155, yaxis_range=[0,110], showlegend=False)
-            st.plotly_chart(fig, use_container_width=True)
+            <div class="rbox {bc}">
+                <div class="rtitle" style="color:{col};">{icon} &nbsp;{zone}</div>
+                <div class="rmeta">{desc}<br>Relay: <span style="font-family:'Share Tech Mono',monospace;color:{col};">{relay}</span></div>
+            </div>""",unsafe_allow_html=True)
+            zones=['Normal','Zone 1','Zone 2','Zone 3','Power Swing']
+            zi=zones.index(zone.replace(" Fault","").replace(" Operation",""))
+            zv=[3]*5; zv[zi]=92
+            zc=[CYAN,RED,'#ff6640',AMBER,PURPLE]
+            fig=go.Figure(go.Bar(x=zones,y=zv,marker_color=zc,marker_opacity=0.8,
+                text=[f'{v}%' for v in zv],textposition='outside',
+                textfont=dict(size=10,color='#e0d0ff',family='Share Tech Mono')))
+            for i,v in enumerate(zv):
+                if v>10:
+                    fig.add_trace(go.Bar(x=[zones[i]],y=[v],marker_color=zc[i],
+                        marker_opacity=0.3,showlegend=False,
+                        marker=dict(line=dict(color=zc[i],width=1))))
+            pl(fig,height=155,yaxis_range=[0,110],showlegend=False,barmode='overlay')
+            st.plotly_chart(fig,use_container_width=True)
         else:
-            st.markdown('<div class="empty-state">Adjust sensor readings on the left<br>and click Classify Condition.</div>', unsafe_allow_html=True)
-        st.markdown(panel_close(), unsafe_allow_html=True)
+            st.markdown('<div class="empty">Adjust readings on the left<br>and click Classify Condition.</div>',unsafe_allow_html=True)
+        st.markdown(pc(),unsafe_allow_html=True)
 
-    c1,c2 = st.columns(2)
+    c1,c2=st.columns(2)
     with c1:
-        st.markdown(panel_open("Protection Zones"), unsafe_allow_html=True)
-        zones_ref = [
-            ("Normal","< 5% Vm drop","No action","green"),
-            ("Zone 1","&gt; 25% drop","Immediate trip","red"),
-            ("Zone 2","15 – 25% drop","Trip 0.3 s","red"),
-            ("Zone 3","8 – 15% drop","Trip 1.0 s","amber"),
-            ("Power Swing","ROCOF &gt; 0.5","Block relay","amber"),
-        ]
-        for cond,trig,act,cls in zones_ref:
-            st.markdown(f'<div class="drow"><span class="drow-label">{cond} — {trig}</span><span class="drow-value {cls}">{act}</span></div>', unsafe_allow_html=True)
-        st.markdown(panel_close(), unsafe_allow_html=True)
-
+        st.markdown(po("Protection Zones"),unsafe_allow_html=True)
+        for cond,trig,act,vc in [
+            ("Normal","Vm drop < 5%","No action","dv-g"),
+            ("Zone 1","Vm drop > 25%","Immediate trip","dv-r"),
+            ("Zone 2","15–25% drop","Trip 0.3 s","dv-r"),
+            ("Zone 3","8–15% drop","Trip 1.0 s","dv-a"),
+            ("Power Swing","ROCOF > 0.5","Block relay","dv-a"),
+        ]: st.markdown(dr(f"{cond} — {trig}",act,vc),unsafe_allow_html=True)
+        st.markdown(pc(),unsafe_allow_html=True)
     with c2:
-        st.markdown(panel_open("Class Distribution"), unsafe_allow_html=True)
-        fd = pd.DataFrame({'Zone':['Normal','Zone1','Zone2','Zone3','PowerSwing'],'Count':[2000]*5})
-        fig2 = go.Figure(go.Pie(
-            labels=fd['Zone'], values=fd['Count'], hole=0.55,
-            marker_colors=[SAFE,THRT,'#ff6640',WARN,'#aa55ff'],
-            textinfo='none',
-        ))
+        st.markdown(po("Class Distribution"),unsafe_allow_html=True)
+        fd=pd.DataFrame({'Zone':['Normal','Zone1','Zone2','Zone3','PowerSwing'],'Count':[2000]*5})
+        fig2=go.Figure(go.Pie(labels=fd['Zone'],values=fd['Count'],hole=0.58,
+            marker_colors=[CYAN,RED,'#ff6640',AMBER,PURPLE],textinfo='none'))
         fig2.add_annotation(text="<b>10K</b><br><span style='font-size:9px'>samples</span>",
-                            x=0.5,y=0.5,showarrow=False,
-                            font=dict(color='#c8d8e8',size=13,family='JetBrains Mono'))
-        pl(fig2, height=165, margin=dict(l=0,r=0,t=0,b=0),
-           legend=dict(font=dict(size=9),bgcolor='rgba(0,0,0,0)'))
-        st.plotly_chart(fig2, use_container_width=True)
-        st.markdown(panel_close(), unsafe_allow_html=True)
+            x=0.5,y=0.5,showarrow=False,font=dict(color='#e0d0ff',size=13,family='Orbitron'))
+        pl(fig2,height=165,margin=dict(l=0,r=0,t=0,b=0),legend=dict(font=dict(size=9),bgcolor='rgba(0,0,0,0)'))
+        st.plotly_chart(fig2,use_container_width=True)
+        st.markdown(pc(),unsafe_allow_html=True)
