@@ -406,7 +406,7 @@ def cm_fig(cm,labels,title):
     fig,ax=plt.subplots(figsize=(6.5,4.8))
     fig.patch.set_facecolor('#0a0118'); ax.set_facecolor('#05010f')
     sns.heatmap(cm,annot=True,fmt='d',cmap=cmap,xticklabels=labels,yticklabels=labels,ax=ax,
-                linewidths=0.4,linecolor='rgba(180,0,255,0.1)',
+                linewidths=0.4,linecolor='#1a0035',
                 annot_kws={"size":9,"family":"monospace","color":"#e0d0ff"})
     ax.set_title(title,color='#7a30aa',fontsize=10,pad=10,family='monospace')
     ax.set_xlabel('Predicted',color='#4a2a7a',fontsize=9)
